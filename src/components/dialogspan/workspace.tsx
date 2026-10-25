@@ -229,7 +229,7 @@ export function Workspace() {
 
   return (
     <Frame>
-      <div className="mx-auto max-w-6xl px-4 py-6">
+      <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
         <p className="max-w-3xl font-serif text-2xl leading-snug text-fg sm:text-3xl">
           Collect turns. Correlate with evidence. Show the relationship. You decide.
         </p>
@@ -257,8 +257,8 @@ export function Workspace() {
           </div>
         ) : null}
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-3">
-          <section className="order-2 rounded-xl border border-line bg-surface lg:order-1 lg:col-span-1">
+        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
+          <section className="order-2 rounded-xl border border-line bg-surface lg:order-1">
             <div className="flex border-b border-line" role="tablist" aria-label="Input">
               <button
                 type="button"
@@ -413,7 +413,7 @@ export function Workspace() {
             ) : null}
           </section>
 
-          <section className="order-1 lg:order-2 lg:col-span-2">
+          <section className="order-1 min-w-0 lg:order-2">
             {analysis ? (
               <Results
                 analysis={analysis}

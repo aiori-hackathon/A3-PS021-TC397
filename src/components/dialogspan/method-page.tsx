@@ -9,7 +9,8 @@ const focus =
 export function MethodPage() {
   return (
     <Frame>
-      <article className="mx-auto max-w-3xl px-4 py-8">
+      <article className="w-full px-4 py-8 sm:px-6 lg:px-8">
+        <div className="max-w-3xl">
         <p className="font-mono text-xs text-muted">PS-021 · How DialogSpan decides</p>
         <h1 className="mt-2 font-serif text-4xl leading-tight text-fg">Method</h1>
         <p className="mt-4 text-base leading-relaxed text-muted">
@@ -152,6 +153,7 @@ export function MethodPage() {
         >
           Back to the workspace
         </Link>
+        </div>
       </article>
     </Frame>
   );
