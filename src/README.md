@@ -1,1 +1,6 @@
-Include your code files in the src folder to demonstrate your implementation.
+DialogSpan implementation.
+
+- `lib/dialogspan/engine.ts` — correlation rules
+- `lib/dialogspan/scenarios.ts` — lab transcripts
+- `components/dialogspan/` — review workspace and method page
+- `routes/` — workspace (`/`) and method (`/method`)
