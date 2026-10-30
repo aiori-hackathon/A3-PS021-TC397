@@ -1,2 +1,7 @@
 target-version = "py311"
+line-length = 100
 extend-exclude = ["*.md"]
+
+[lint.per-file-ignores]
+# The forbidden phrases are joined on purpose so the file does not contain them.
+"tests/unit/test_wording.py" = ["FLY002"]

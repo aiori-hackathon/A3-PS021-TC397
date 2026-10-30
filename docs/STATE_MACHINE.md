@@ -30,8 +30,8 @@ stateDiagram-v2
     IN_PROGRESS --> EFFECT_PENDING: effect intent saved
     IN_PROGRESS --> COMPLETED: complete (no side effect)
     EFFECT_PENDING --> COMPLETED: receipt saved and complete
-    IN_PROGRESS --> SUSPENDED: lease expired
-    EFFECT_PENDING --> SUSPENDED: lease expired
+    IN_PROGRESS --> SUSPENDED: lease expired, or task.fail retryable
+    EFFECT_PENDING --> SUSPENDED: lease expired, or task.fail retryable
     SUSPENDED --> IN_PROGRESS: resume or reclaim (fence +1, attempt +1)
     EFFECT_PENDING --> IN_PROGRESS: owner restarted, resumes early (fence +1)
     IN_PROGRESS --> IN_PROGRESS: owner restarted, resumes early (fence +1)
@@ -55,10 +55,11 @@ stateDiagram-v2
 | CREATED | DISPATCHED | Dispatcher | deps COMPLETED; no confirmation needed (or already confirmed) | — |
 | AWAITING_CONFIRMATION | DISPATCHED | Dispatcher | `confirmed` and deps COMPLETED | — |
 | DISPATCHED | IN_PROGRESS | `task.claim` / `task.claim_next` | no valid lease held by anyone | owner set, `fence += 1`, `attempt = 1`, lease set |
-| IN_PROGRESS | EFFECT_PENDING | `task.effect_intent` | sender is owner, fence current, `effect.status = none` | `effect.key`, `effect.status = intent` |
+| IN_PROGRESS | EFFECT_PENDING | `task.effect_intent` | sender is owner, fence current, `effect.status = none`, **or** `effect.status = intent` with the same key (repeat after a resume) | `effect.key`, `effect.status = intent` |
 | IN_PROGRESS | COMPLETED | `task.complete` | owner, fence current, task has no side effect **or** `effect.status = committed` | result stored, lease cleared |
 | EFFECT_PENDING | COMPLETED | `task.complete` | owner, fence current, `effect.status = committed` | result stored, lease cleared |
-| IN_PROGRESS / EFFECT_PENDING | SUSPENDED | Watchdog | `lease_until < now` | `lease_expired` event |
+| IN_PROGRESS / EFFECT_PENDING | SUSPENDED | Watchdog | `lease_until < now` | `lease_expired` event; if `attempt >= max_attempts`, the same transaction continues SUSPENDED → FAILED (row below) |
+| IN_PROGRESS / EFFECT_PENDING | SUSPENDED | `task.fail` with `retryable: true` | owner, fence current | reason stored, lease cleared; resume, reclaim and the attempt limit then apply as usual |
 | SUSPENDED | IN_PROGRESS | `task.resume` / `task.claim` | `attempt < max_attempts` | new owner (may be same), `fence += 1`, `attempt += 1`, lease set |
 | IN_PROGRESS / EFFECT_PENDING | IN_PROGRESS | `task.resume` by the **current owner** before its lease expired (it restarted quickly) | sender is owner; `attempt < max_attempts` | `fence += 1`, `attempt += 1`, lease renewed; `resumed` event |
 | SUSPENDED | FAILED | Watchdog | `attempt >= max_attempts` | reason `max_attempts`; dependents cancelled |
@@ -79,6 +80,9 @@ Notes:
 - A task with `effect.status` of `intent` or `committed` can **never** be
   cancelled: the side effect may already have happened.
 - Terminal states accept no transitions at all.
+- The watchdog never skips SUSPENDED. A task whose lease expires on its
+  last attempt goes IN_PROGRESS/EFFECT_PENDING → SUSPENDED → FAILED inside
+  one transaction, so every move it makes is in the table above.
 
 ## Mapping to A2A-style task states
 
@@ -107,14 +111,16 @@ ALLOWED = {
     ("EFFECT_PENDING", "COMPLETED"),
     ("IN_PROGRESS", "SUSPENDED"), ("EFFECT_PENDING", "SUSPENDED"),
     ("SUSPENDED", "IN_PROGRESS"),
-    ("IN_PROGRESS", "IN_PROGRESS"), ("EFFECT_PENDING", "IN_PROGRESS"),  # early resume by owner ("SUSPENDED", "FAILED"), ("IN_PROGRESS", "FAILED"),
+    ("IN_PROGRESS", "IN_PROGRESS"), ("EFFECT_PENDING", "IN_PROGRESS"),  # early resume by owner
+    ("SUSPENDED", "FAILED"), ("IN_PROGRESS", "FAILED"),
     ("CREATED", "CANCELLED"), ("AWAITING_CONFIRMATION", "CANCELLED"),
     ("DISPATCHED", "CANCELLED"), ("IN_PROGRESS", "CANCELLED"), ("SUSPENDED", "CANCELLED"),
 }
 
-def transition(task, to_state, guard_ok: bool):
-    if (task.state, to_state) not in ALLOWED or not guard_ok:
-        raise InvalidTransition(task.state, to_state)
+def transition(from_state, to_state, guard_ok: bool):
+    if (from_state, to_state) not in ALLOWED or not guard_ok:
+        raise InvalidTransition(from_state, to_state)
+    return to_state
 ```
 
 Guards are separate functions so each can be unit-tested on its own.

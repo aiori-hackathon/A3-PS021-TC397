@@ -139,20 +139,35 @@ Kinds Agent B uses: `agent.register`, `agent.heartbeat`, `task.claim_next`,
 | `task_id` | `arguments.task_id` | `message.taskId` |
 | `fence` | `arguments.fence` | `message.metadata.fence` |
 | `payload` | remaining `arguments` | `message.parts[0].data` |
+| `sent_at` | `params._meta.sent_at` | `message.metadata.sent_at` |
 | task `state` | `structuredContent.state` (exact bridge state) | `status.state` (mapped) + `metadata.bridge_state` (exact) |
 
 State mapping for A2A-style is in [STATE_MACHINE.md](STATE_MACHINE.md#mapping-to-a2a-style-task-states).
 
 ## Codec contract
 
-Each codec module exposes four pure functions (no I/O, easy to unit-test):
+Each codec module exposes six pure functions (no I/O, easy to unit-test). The
+bridge uses the decode-request / encode-reply side; the mock adapters use the
+encode-request / decode-reply side of the same module, so the two cannot drift.
 
 ```python
-def decode_request(native: dict) -> Envelope
-def encode_reply(reply: Reply, native_request: dict) -> dict
+def encode_request(env: Envelope) -> dict          # adapters
+def decode_request(native: dict) -> Envelope       # bridge
+def encode_reply(reply: Reply, native_request: dict) -> dict   # bridge
+def decode_reply(native: dict) -> Reply            # adapters
 def encode_task_view(task: Task) -> dict          # for the inspector
 def decode_task_view(native: dict) -> Task         # for round-trip tests
 ```
+
+Details that keep the round trips lossless:
+
+- Task views carry the **full** task record: MCP-style in `structuredContent`,
+  A2A-style in `metadata` next to `bridge_state`.
+- MCP-style errors put the bridge error code in `error.message` (as above) and
+  the human-readable text in `error.data._message`.
+- A2A-style success replies are `{"task": view}` when the result is one task
+  (with `metadata.event_seq`), `{"tasks": [views], "event_seq": n}` for a
+  list of tasks, and `{"result": ..., "event_seq": n}` otherwise.
 
 Round-trip property tested in I1 and I2:
 

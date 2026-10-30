@@ -51,7 +51,7 @@ The Pydantic models in `bridge/models.py` are the source of truth. The file
 | --- | --- | --- | --- | --- |
 | `agent.register` | any agent | yes | `protocol`, `base_url` | agent record |
 | `agent.heartbeat` | any agent | yes | `task_ids` it is working on | lease expiry times |
-| `dialog.create` | Agent A | yes | `msg_id`, `text`, `tasks[]` (intent, params, steps, action, needs_confirmation, depends_on) | dialog + task records |
+| `dialog.create` | Agent A | yes | `msg_id`, `text`, `tasks[]` (intent, params, steps, action, needs_confirmation, depends_on); `depends_on` holds 1-based indexes of earlier tasks in the same request | dialog + task records |
 | `dialog.get` | any | no | — | dialog + tasks |
 | `task.confirm` | Agent A | yes | — | task |
 | `task.cancel` | Agent A | yes | `reason` | task |
@@ -62,7 +62,7 @@ The Pydantic models in `bridge/models.py` are the source of truth. The file
 | `task.effect_intent` | worker (owner) | yes | `effect_key`, `action`, `params` | task (now EFFECT_PENDING) |
 | `task.effect_result` | worker (owner) | yes | `receipt_id`, `replayed` | task |
 | `task.complete` | worker (owner) | yes | `result` | task |
-| `task.fail` | worker (owner) | yes | `reason`, `retryable` | task |
+| `task.fail` | worker (owner) | yes | `reason`, `retryable` | task: FAILED, or SUSPENDED if `retryable` |
 | `events.since` | any | no | `seq` | list of events after `seq` |
 
 ## 2. Records
@@ -112,6 +112,7 @@ The Pydantic models in `bridge/models.py` are the source of truth. The file
 `state` is one of the states in [STATE_MACHINE.md](STATE_MACHINE.md).
 `effect.status` is `none`, `intent` or `committed`.
 A task has **at most one** side effect. Multi-effect requests become multiple tasks.
+`depends_on` lists the `index` values of earlier tasks in the same dialog.
 
 ### Event
 

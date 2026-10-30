@@ -193,9 +193,11 @@ sends late is rejected.
 
 **Lease watchdog** (every `WATCHDOG_TICK`):
 
-1. Tasks in IN_PROGRESS or EFFECT_PENDING with `lease_until < now`:
-   - if `attempt >= max_attempts` → FAILED (`max_attempts_reached`), cancel dependents;
-   - else → SUSPENDED (`lease_expired`).
+1. Tasks in IN_PROGRESS or EFFECT_PENDING with `lease_until < now` → SUSPENDED
+   (`lease_expired`). In the same transaction, if `attempt >= max_attempts`,
+   the task continues SUSPENDED → FAILED (`max_attempts_reached`) and its
+   dependents are cancelled. The watchdog never skips SUSPENDED, so every
+   move it makes is in the transition table.
 2. Agents with no heartbeat for `2 × HEARTBEAT_SECONDS` → `unresponsive`.
 
 **Dispatcher** (every `DISPATCH_TICK`):

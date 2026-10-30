@@ -72,7 +72,7 @@ dashboard shows "pay ₹40 to bakery" instead of "step 3".
 ## Output shape
 
 ```python
-route("Pay ₹40 to the bakery and email the receipt to Rahul")
+route("Pay ₹40 to the bakery and email the receipt to Rahul").tasks
 # ->
 [
   {"intent": "payment", "action": "pay",
@@ -86,6 +86,8 @@ route("Pay ₹40 to the bakery and email the receipt to Rahul")
 ]
 ```
 
+`route()` returns a `RouteResult` with `tasks` (above), `matched`, `command`
+(a cancel command, if any) and `reply` (for example "Nothing was scheduled.").
 Every routing decision also returns `matched` (keyword and rule that fired) so
 the chat can show *"Detected intent: payment · ₹40 · bakery · scripted mode"*.
 
