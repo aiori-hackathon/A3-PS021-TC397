@@ -110,9 +110,10 @@ worker, and the ledger resolves it.
 
 1. `agent.register`.
 2. Read open dialogs from the bridge; rebuild the chat view from events.
-3. Any user message whose `dialog.create` may not have completed is retried
-   with the same `{msg_id}:create`. The inbox returns the existing dialog, so
-   tasks are never created twice (extra test X3).
+3. Any user message whose `dialog.create` may not have completed (kept as
+   *pending* in `data/<mode>/agent_a.json` until the create is done) is
+   retried with the same `{msg_id}:create`. The inbox returns the existing
+   dialog, so tasks are never created twice (extra test X3).
 
 ### Bridge restart
 

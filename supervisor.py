@@ -53,6 +53,9 @@ class Proc:
     started_at: float | None = None
     stopped_by_request: bool = False
     healthy: bool = False  # set once /health answered after the last start
+    crashes: int = 0  # crashes seen since the last reset
+    counted: Any = None  # the Popen whose crash was already counted
+    restart_pending: bool = False
     env: dict[str, str] = field(default_factory=dict)  # per-start overrides
     log_file: Any = None
 
@@ -77,6 +80,7 @@ class Proc:
             else None,
             "exit_code": self.popen.poll() if self.popen else None,
             "env": dict(self.env),
+            "crashes": self.crashes,
         }
 
 
@@ -255,6 +259,8 @@ class Supervisor:
     async def restart(self, name: str, env: dict[str, str] | None) -> dict[str, Any]:
         proc = self.get(name)
         async with self.lock:
+            if proc.status() in ("running", "starting"):
+                proc.counted = proc.popen  # our own kill is part of the restart, not a crash
             await self._kill(proc)
             if env is not None:
                 proc.env = dict(env)
@@ -273,6 +279,7 @@ class Supervisor:
             for proc in self.procs.values():
                 await self._wait_port_free(proc)
                 proc.env = {}
+                proc.crashes = 0
             self.wipe_data()
             self.world_env = dict(env)
             if keep_running:
@@ -289,6 +296,45 @@ class Supervisor:
             else:
                 item.unlink()
         log.info("wiped %s", data)
+
+    # --- crash watching and AUTO_RESTART -------------------------------------------------
+
+    def _flag(self, name: str, default: Any) -> str:
+        return str(self.world_env.get(name, os.environ.get(name, default)))
+
+    def auto_restart(self) -> tuple[bool, float]:
+        on = self._flag("AUTO_RESTART", self.settings.auto_restart).strip().lower()
+        delay = float(self._flag("AUTO_RESTART_DELAY", self.settings.auto_restart_delay))
+        return on in ("1", "true", "yes", "on"), delay
+
+    async def monitor(self) -> None:
+        """Count crashes; with AUTO_RESTART on, restart crashed agents after a delay."""
+        while True:
+            await asyncio.sleep(0.1)
+            on, delay = self.auto_restart()
+            for proc in self.procs.values():
+                if proc.status() != "crashed":
+                    continue
+                if proc.counted is not proc.popen:
+                    proc.counted = proc.popen
+                    proc.crashes += 1
+                    log.info("%s crashed (exit %s)", proc.name, proc.popen.poll())
+                # Checked every tick, not only when the crash is first seen: a crash that
+                # happens while an earlier auto-restart is still running is not lost.
+                if on and proc.name.startswith("agent_") and not proc.restart_pending:
+                    proc.restart_pending = True
+                    asyncio.create_task(self._auto_restart(proc, delay))
+
+    async def _auto_restart(self, proc: Proc, delay: float) -> None:
+        try:
+            await asyncio.sleep(delay)
+            if proc.status() == "crashed":  # a reset or a manual restart may have won
+                log.info("auto-restarting %s", proc.name)
+                await self.restart(proc.name, None)
+        except Exception:
+            log.exception("auto-restart of %s failed", proc.name)
+        finally:
+            proc.restart_pending = False
 
     async def start_all(self) -> None:
         """Bring the default world up without wiping data (supervisor boot)."""
@@ -317,9 +363,11 @@ def create_app(settings: config.Settings, boot_world: bool = False) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         booting = asyncio.create_task(sup.start_all()) if boot_world else None
+        watching = asyncio.create_task(sup.monitor())
         try:
             yield
         finally:
+            watching.cancel()
             if booting:
                 booting.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):

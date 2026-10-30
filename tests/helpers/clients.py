@@ -59,6 +59,15 @@ class BridgeClient:
         r = self.http.post("/a2a", json=native)
         return r.status_code, a2a_style.decode_reply(r.json())
 
+    def send(
+        self, entrance: str, op: str, request_id: str | None = None, sender: str | None = None, **kw
+    ) -> httpx.Response:
+        """Raw POST to /mcp or /a2a; for checking faults (503s are not codec replies)."""
+        codec = mcp_style if entrance == "mcp" else a2a_style
+        sender = sender or ("agent_a" if entrance == "mcp" else "agent_b")
+        native = codec.encode_request(self.envelope(op, sender, request_id, **kw))
+        return self.http.post(f"/{entrance}", json=native)
+
     # --- read-only routes ---------------------------------------------------
 
     def get(self, path: str, **params: Any) -> Any:

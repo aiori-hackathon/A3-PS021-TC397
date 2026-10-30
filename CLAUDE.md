@@ -42,6 +42,9 @@ plain HTML/CSS/JS with **no CDN** and no build step.
 - Leases use the bridge's clock only.
 - Events are pushed to WebSocket clients only after commit.
 - Agents keep no state they need after a crash; they read it back from the bridge.
+  The one exception is Agent A's list of pending user messages
+  (`data/<mode>/agent_a.json`, see docs/ADAPTERS.md), because the bridge
+  cannot know about a message whose `dialog.create` never arrived.
 - Only Agent B performs side effects, only via the actions service.
 - Every message carries `schema: "dialog-state/0.1-experimental"`.
 

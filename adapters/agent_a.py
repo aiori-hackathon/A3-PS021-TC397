@@ -4,7 +4,10 @@ Turns user text into tasks with the rule-based intent router, creates the
 dialog through the bridge, asks for (or auto-gives) confirmation of
 side-effect tasks, and follows the event log to tell the user what happened.
 It never performs a side effect. The chat view is rebuilt from the bridge's
-events after a restart; the only local file is the msg_id counter.
+events after a restart. The only local file, data/<mode>/agent_a.json, holds
+the msg_id counter and the user messages whose dialog.create may not have
+completed; after a restart they are retried with the same {msg_id}:create,
+so the inbox returns the existing dialog instead of creating a second one.
 """
 
 from __future__ import annotations
@@ -76,18 +79,56 @@ class AgentA(Agent):
     def encode(self, env: Envelope) -> dict[str, Any]:
         return mcp_style.encode_request(env, rpc_id=self.next_id("rpc"))
 
-    # --- msg_id counter (the one local file) -------------------------------------------
+    # --- the one local file: msg_id counter + pending user messages ---------------------
 
-    def new_msg_id(self) -> str:
-        data = {"counter": 0}
+    def _load(self) -> dict[str, Any]:
+        data: dict[str, Any] = {"counter": 0, "pending": {}}
         if self.state_file.exists():
-            data = json.loads(self.state_file.read_text(encoding="utf-8"))
-        data["counter"] += 1
+            data.update(json.loads(self.state_file.read_text(encoding="utf-8")))
+        return data
+
+    def _save(self, data: dict[str, Any]) -> None:
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.state_file.with_suffix(".tmp")
         tmp.write_text(json.dumps(data), encoding="utf-8")
-        os.replace(tmp, self.state_file)
+        os.replace(tmp, self.state_file)  # atomic: a crash leaves the old or the new file
+
+    def new_msg_id(self) -> str:
+        data = self._load()
+        data["counter"] += 1
+        self._save(data)
         return f"msg_{data['counter']}"
+
+    def remember_pending(self, msg_id: str, text: str) -> None:
+        data = self._load()
+        data["pending"][msg_id] = text
+        self._save(data)
+
+    def forget_pending(self, msg_id: str) -> None:
+        data = self._load()
+        if data["pending"].pop(msg_id, None) is not None:
+            self._save(data)
+
+    async def confirm_all(self, tasks: list[dict[str, Any]]) -> None:
+        if not self.settings.auto_confirm:
+            return
+        for t in tasks:
+            if t["needs_confirmation"]:
+                await self.call("task.confirm", f"{t['task_id']}:confirm", task_id=t["task_id"])
+
+    async def retry_pending(self) -> None:
+        """After a restart: finish any dialog.create that may not have completed."""
+        for msg_id, text in self._load()["pending"].items():
+            routed = route(text)  # deterministic: the same tasks as before the crash
+            reply = await self.call(
+                "dialog.create",
+                f"{msg_id}:create",
+                payload={"msg_id": msg_id, "text": text, "tasks": routed.tasks},
+            )
+            self.log(f"retried create for {msg_id} after restart: ok={reply.ok}")
+            if reply.ok:
+                await self.confirm_all(reply.result["tasks"])
+            self.forget_pending(msg_id)
 
     # --- chat --------------------------------------------------------------------------
 
@@ -132,6 +173,7 @@ class AgentA(Agent):
 
     async def run(self) -> None:
         await self.register()
+        await self.retry_pending()
         while True:
             reply = await self.call("events.since", payload={"seq": self.cursor})
             batch = reply.result["events"] if reply.ok else []
@@ -257,6 +299,7 @@ class AgentA(Agent):
 
         self.in_flight.add(msg_id)
         try:
+            self.remember_pending(msg_id, text)
             self.maybe_crash("before_create")
             reply = await self.call(
                 "dialog.create",
@@ -265,6 +308,7 @@ class AgentA(Agent):
             )
             self.maybe_crash("after_create")
             if not reply.ok:
+                self.forget_pending(msg_id)
                 out["reply"] = f"The bridge refused the request: {reply.error.message}"
                 return JSONResponse(
                     {**out, "error": reply.error.model_dump(mode="json")},
@@ -299,10 +343,8 @@ class AgentA(Agent):
             self.say(("plan", dialog_id), "plan", out["reply"], dialog_id=dialog_id)
         finally:
             self.in_flight.discard(msg_id)
-        if self.settings.auto_confirm:
-            for t in reply.result["tasks"]:
-                if t["needs_confirmation"]:
-                    await self.call("task.confirm", f"{t['task_id']}:confirm", task_id=t["task_id"])
+        await self.confirm_all(reply.result["tasks"])
+        self.forget_pending(msg_id)
         return JSONResponse(out)
 
     async def cancel_command(self, command: dict[str, Any]) -> dict[str, Any]:

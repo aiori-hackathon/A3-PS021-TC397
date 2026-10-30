@@ -22,17 +22,19 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 import config
-from bridge import events, jobs, metrics, registry, tasks
+from bridge import events, jobs, metrics, proxy, registry, tasks
 from bridge.codecs import a2a_style, mcp_style
 from bridge.db import Database
 from bridge.handlers import Bridge
 from bridge.models import SCHEMA_VERSION, Reply, Task
+from services.faults import FaultEngine, FaultMiddleware, FaultRule, fault_routes
 
 log = logging.getLogger("bridge")
 
 SETTINGS = config.load()
 BOOT_ID = uuid.uuid4().hex[:12]
 HUB = events.Hub()
+FAULTS = FaultEngine(proxy.LINKS)
 
 
 class State:
@@ -85,6 +87,38 @@ app.add_middleware(
     allow_origins=list(SETTINGS.cors_origins),
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+
+def _log_event(type: str, actor: str, data: dict[str, Any]) -> None:
+    with state.db.transaction() as tx:
+        tx.event(type, actor, data=data)
+
+
+async def _fault_applied(rule: FaultRule, link: str | None, attrs: dict[str, Any]) -> None:
+    data = {
+        "rule_id": rule.id,
+        "link": link,
+        "action": rule.action,
+        "op": attrs.get("op"),
+        "request_id": attrs.get("request_id"),
+        "note": rule.note,
+    }
+    await run_in_threadpool(_log_event, "fault_applied", "fault_proxy", data)
+
+
+app.add_middleware(
+    FaultMiddleware,
+    engine=FAULTS,
+    paths=proxy.PATHS,
+    classify=proxy.classify,
+    on_applied=_fault_applied,
+)
+app.include_router(
+    fault_routes(
+        FAULTS,
+        on_change=lambda what, data: _log_event("fault_rule_set", "test", {"change": what, **data}),
+    )
 )
 
 

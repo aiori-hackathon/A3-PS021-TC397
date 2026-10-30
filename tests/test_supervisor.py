@@ -1,6 +1,7 @@
 """Supervisor control API (docs/SUPERVISOR.md), driven through the world fixture."""
 
 import httpx
+import pytest
 
 from tests.helpers.wait import wait_until
 
@@ -70,3 +71,21 @@ def test_cors_lets_the_dashboard_call_the_supervisor(world):
         headers={"Origin": "http://localhost:8000", "Access-Control-Request-Method": "GET"},
     )
     assert r.headers.get("access-control-allow-origin") == "http://localhost:8000"
+
+
+@pytest.mark.world_env(AUTO_RESTART="1", AUTO_RESTART_DELAY="0.2")
+def test_restart_is_not_a_crash_but_a_kill_is_auto_restarted(world):
+    # Regression: the supervisor's own kill inside /restart used to count as a
+    # crash and schedule a stray auto-restart (X4/X6 flaked 10/40 because of it).
+    world.supervisor.restart("agent_b")
+    assert world.supervisor.status()["agent_b"]["crashes"] == 0
+    pid = world.supervisor.status()["agent_b"]["pid"]
+    world.supervisor.kill("agent_b")  # a simulated crash
+    wait_until(
+        lambda: (
+            (s := world.supervisor.status()["agent_b"])["status"] == "running"
+            and s["pid"] != pid
+            and s["crashes"] == 1
+        ),
+        timeout=10,
+    )

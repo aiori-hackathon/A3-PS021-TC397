@@ -181,7 +181,15 @@ got stuck).
 - **Trap:** start "pay ₹40 to the bakery" with `STEP_DELAY` raised for this
   test; once the task is IN_PROGRESS, apply `{link: agent_a, action: cut}`.
 - **Act:** `POST /kill/bridge` (hard kill) **mid-step**; record `last_seq`;
-  `POST /start/bridge`; re-apply the cut for 2 s, then delete it.
+  `POST /start/bridge`; re-apply the cut (rules live in memory), hold it with
+  `wait_until` until Agent A has actually hit it (a `fault_applied` event for
+  that rule), then delete it. No fixed sleep.
+- `STEP_DELAY=0.5` for this world (via `world_env`) so the kill lands mid-task.
+  The test checks the task was IN_PROGRESS or EFFECT_PENDING just before the kill.
+- Because events may commit between reading `last_seq` and the kill, the check
+  is `bridge_started.data.previous_last_seq >= last_seq` and
+  `bridge_started.seq == previous_last_seq + 1`, plus: all event seqs are
+  1…N with no gap.
 - **Check:** after restart, `bridge_started` event shows recovered tasks; first
   new `seq` is `last_seq + 1`; the task keeps its `task_id`, finishes COMPLETED;
   ledger 1; Agent A's chat eventually shows completion (it caught up with
@@ -192,8 +200,10 @@ got stuck).
 - **Check:** ledger 1; a `duplicate_rejected` event; worker did not crash.
 
 ### X2 — Slow, not dead
-- **Trap:** start `agent_b2`; `{link: agent_b, action: delay, delay_ms: 3×lease, count: -1}`
-  applied after B claims.
+- **Trap:** `STEP_DELAY=0.5` for this world so B is still working when the
+  rule lands; `{link: agent_b, action: delay, delay_ms: 3×lease, count: -1}`
+  applied after B claims; then start `agent_b2` (started after the claim so
+  it cannot win the first claim).
 - **Check:** `lease_expired`, `reclaimed` by `agent_b2` with fence 2;
   at least one `stale_fence_blocked` event from `agent_b`; ledger 1.
 
@@ -211,10 +221,14 @@ got stuck).
 ### X5 — Cancel before the side effect
 - **Setup:** `AUTO_CONFIRM=0`. **Act:** payment message, then `POST /cancel`.
 - **Check:** CANCELLED; ledger 0; cancelling a task with `effect.status = committed` is rejected (409).
+  The committed case is made real: a second payment with `CRASH_AT=after_pay`
+  leaves the task EFFECT_PENDING with the effect committed; the cancel is
+  refused; Agent B is restarted and finishes it (ledger 1 for that task).
 
 ### X6 — Dependency fails
 - Covered inside X4; separate assertion that the dependent task has **no**
-  `claimed` event ever.
+  `claimed` event ever. Implemented as its own test that runs the same
+  scenario, so X4 and X6 each get their own status in the results.
 
 ### X7 — Duplicate dispatch
 - **Trap:** `{link: agent_b, action: duplicate, match: {op: task.checkpoint}}`.
@@ -227,6 +241,10 @@ got stuck).
 
 ### I3 — Cross-adapter correlation
 - Agent A creates via `/mcp`; read `GET /tasks/{id}/views`.
+- **How:** `STEP_DELAY=0.2`; the test samples `/tasks/{id}/views` every 50 ms
+  through the whole run, and also checks each A2A-style checkpoint reply
+  Agent B received against the state the event log records at that
+  `event_seq`.
 - **Check:** MCP-style view and A2A-style view carry the same `dialog_id`
   (`contextId`) and `task_id` (`id`); states correspond per the mapping table;
   A's `structuredContent` and B's `metadata.bridge_state` agree at every

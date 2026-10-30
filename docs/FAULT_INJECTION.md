@@ -68,6 +68,23 @@ On both the bridge and the actions service:
 Every application of a rule logs a `fault_applied` event (bridge) or a log line
 (actions service) with the rule's `note`.
 
+## Implementation notes
+
+- Both middlewares are plain ASGI, so a `delay`ed request is still handled
+  after its client gave up waiting, the way a slow network delivers a late
+  message (X2 relies on this: the slow worker's late writes arrive and are
+  blocked by the fence).
+- Only `POST /mcp`, `POST /a2a` (bridge) and `POST /actions` (actions service)
+  can be faulted. Read-only and control routes never are.
+- A refused request gets HTTP 503 with header `X-Fault` and the body
+  `{"error": {"code": "fault_injected", ...}}`.
+- `count` is a positive number of firings or `-1`; `0` is rejected. Each
+  service accepts only its own links (`400` otherwise). Rule IDs are `r1`,
+  `r2`, … and are never reused within a process.
+- On the bridge, adding, deleting or clearing rules logs `fault_rule_set`,
+  and each firing logs `fault_applied` with the rule ID, link, op,
+  request_id and note.
+
 ## Lifetime
 
 Rules live in memory. They disappear when the process restarts, and the

@@ -19,7 +19,7 @@ A never performs a side effect; B never talks to the user.
 | Confirmation | Asks the user before side-effect tasks | — |
 | Runs steps | No | Yes, with a checkpoint after each |
 | Side effects | Never | Yes, via actions service with `effect_key` + `fence` |
-| On restart | `agent.register`, then re-reads open dialogs, keeps waiting | `agent.register`, then `task.resume`, continues from last checkpoint |
+| On restart | `agent.register`, retries any pending `dialog.create`, rebuilds its chat from events | `agent.register`, then `task.resume`, continues from last checkpoint |
 
 ## Shared base (`adapters/base.py`)
 
@@ -35,8 +35,10 @@ Both agents inherit:
   at 0, which is safe because event handling is idempotent.
 - **Crash hooks**: `maybe_crash(point)` reads `CRASH_AT` and calls `os._exit(1)`.
 - **Step delay**: `await asyncio.sleep(STEP_DELAY)` between steps (0 in tests).
-- **Small HTTP server**: `GET /health`, `GET /state` (recent log lines for the
-  dashboard panel), and agent-specific routes below.
+- **Small HTTP server**: `GET /health`, `GET /state` (recent log lines and
+  recent protocol messages in the agent's own format for the dashboard
+  panel; polls, heartbeats and empty claims are left out), and agent-specific
+  routes below.
 
 Agents use `async` code throughout (`httpx.AsyncClient`, `asyncio.sleep`). A
 blocking `time.sleep` would freeze heartbeats and cause false lease expiries.
@@ -55,6 +57,12 @@ HTTP routes:
 Flow for one message:
 
 1. `msg_id` = given one, or `msg_{counter}` saved in `data/<mode>/agent_a.json`.
+   Before `dialog.create`, the message is also saved there as **pending**, and
+   it is removed once the create (and any auto-confirm) is done. This file is
+   the one piece of agent-local state: it records *what the user asked*,
+   which the bridge cannot know if the create never arrived. After a restart
+   Agent A re-routes each pending text (deterministic) and retries
+   `dialog.create` with the same `{msg_id}:create`.
 2. `router.route(text)` → list of intents with params ([INTENT_ROUTING.md](INTENT_ROUTING.md)).
 3. Build tasks from templates; task *n* depends on task *n-1* within one message.
 4. `maybe_crash("before_create")`.

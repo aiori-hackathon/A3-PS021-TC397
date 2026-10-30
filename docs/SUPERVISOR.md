@@ -55,7 +55,13 @@ even while the bridge is down.
   **not** restarted automatically in demo mode. The "Recover" button restarts
   it, so the judges can see the gap.
 - `AUTO_RESTART=1` (optional) restarts crashed agents after
-  `AUTO_RESTART_DELAY` seconds, for the chaos run.
+  `AUTO_RESTART_DELAY` seconds, for the chaos run and X4. It can be set for
+  one world through `/reset`'s `env`. A monitor checks every 0.1 s; only
+  agents are auto-restarted, never the bridge or the actions service.
+- `GET /status` counts `crashes` per process since the last reset. A `/kill` counts
+  as a crash; the kill that `/restart` does itself does not. While `AUTO_RESTART` is
+  on, every crashed agent with no restart pending gets one, including an agent
+  that crashes again while an earlier auto-restart is still in progress.
 - `CRASH_MODE=once`: `CRASH_AT` is removed from the environment on the next
   restart. `CRASH_MODE=always`: kept (retry-limit test X4).
 

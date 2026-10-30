@@ -26,11 +26,13 @@ from pydantic import BaseModel, Field
 
 import config
 from bridge.db import iso
+from services.faults import FaultEngine, FaultMiddleware, FaultRule, fault_routes
 
 log = logging.getLogger("actions")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s actions %(message)s")
 
 SETTINGS = config.load()
+FAULTS = FaultEngine(("actions",))
 
 LEDGER_SQL = """
 CREATE TABLE IF NOT EXISTS ledger (
@@ -197,6 +199,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _classify(path: str, body: Any) -> tuple[str, dict[str, Any]]:
+    body = body if isinstance(body, dict) else {}
+    return "actions", {"action": body.get("action"), "request_id": body.get("idempotency_key")}
+
+
+async def _fault_applied(rule: FaultRule, link: str | None, attrs: dict[str, Any]) -> None:
+    log.info(
+        "fault %s %s on %s (%s) %s", rule.id, rule.action, attrs.get("request_id"), link, rule.note
+    )
+
+
+app.add_middleware(
+    FaultMiddleware,
+    engine=FAULTS,
+    paths={"/actions"},
+    classify=_classify,
+    on_applied=_fault_applied,
+)
+app.include_router(fault_routes(FAULTS))
 
 
 @app.post("/actions")

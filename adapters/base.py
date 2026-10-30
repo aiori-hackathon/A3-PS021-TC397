@@ -35,6 +35,7 @@ import config
 from bridge.models import SCHEMA_VERSION, Envelope, Reply
 
 RETRY_STATUSES = {502, 503, 504}
+QUIET_OPS = {"agent.heartbeat", "events.since"}
 
 
 def now_iso() -> str:
@@ -124,7 +125,13 @@ class Agent:
                 if r.status_code in RETRY_STATUSES:
                     raise OutcomeUnknown(f"HTTP {r.status_code}")
                 body = r.json()
-                self.messages.append({"ts": now_iso(), "op": op, "request": native, "reply": body})
+                if op not in QUIET_OPS and not (
+                    op == "task.claim_next" and body.get("result") is None
+                ):
+                    # Keep the protocol log readable: no polls, heartbeats or empty claims.
+                    self.messages.append(
+                        {"ts": now_iso(), "op": op, "request": native, "reply": body}
+                    )
                 return self.codec.decode_reply(body)
             except (httpx.TransportError, OutcomeUnknown, ValueError) as exc:
                 if not retry:
