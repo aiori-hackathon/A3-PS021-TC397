@@ -141,7 +141,8 @@ A3-PS021-TC397/
 │   ├── agent_b.py           # worker (A2A-style)
 │   ├── router.py            # rule-based intent router
 │   ├── templates.py         # step lists per intent
-│   └── llm_router.py        # optional Ollama router
+│   ├── llm_router.py        # optional Ollama router
+│   └── mock_data.json       # data for the scripted search step
 ├── services/
 │   ├── actions.py           # mock side effects + ledger
 │   └── faults.py            # shared fault-rule engine

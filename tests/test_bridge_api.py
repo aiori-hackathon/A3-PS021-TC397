@@ -418,13 +418,17 @@ def test_events_since_and_filters(bridge, uid):
     assert [e["type"] for e in only] == ["task_created"]
 
 
-def test_health_reports_last_seq(bridge, uid):
+def test_health_reports_last_seq(fresh_bridge, uid):
+    # Private bridge: no background watchdog events from other tests' tasks.
+    bridge = fresh_bridge
     flows.create_dialog(bridge, uid, [GENERAL])
     last = bridge.health()["last_seq"]
     assert last == max(e["seq"] for e in bridge.events(since=last - 5))
 
 
-def test_websocket_hello_live_events_and_catch_up(bridge, uid):
+def test_websocket_hello_live_events_and_catch_up(fresh_bridge, uid):
+    # Private bridge: no background watchdog events from other tests' tasks.
+    bridge = fresh_bridge
     ws_url = bridge.base_url.replace("http://", "ws://") + "/ws"
     with connect(ws_url, open_timeout=5) as ws:
         hello = json.loads(ws.recv(timeout=5))

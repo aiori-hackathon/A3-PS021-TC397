@@ -8,7 +8,12 @@ restart itself during scenario S5.
 ```bash
 python supervisor.py --mode demo      # control API on :8009, world on 8000-8004
 python supervisor.py --mode test      # control API on :9009, world on 9000-9004
+python supervisor.py --mode test --no-start   # control API only (used by the test fixtures)
 ```
+
+On boot the supervisor starts the default processes **without** wiping data,
+so a restarted supervisor continues the previous world. Use `/reset` for an
+empty world.
 
 The test fixtures start the test supervisor automatically if it is not running.
 
@@ -31,12 +36,12 @@ Output goes to `logs/<mode>/<name>.log`.
 
 | Route | Body | Does |
 | --- | --- | --- |
-| `GET /status` | — | Each process: `running`, `crashed` (exited non-zero), `stopped`; pid; uptime; exit code |
+| `GET /status` | — | Each process: `starting` (process up, `/health` not answered yet), `running`, `crashed` (exited non-zero, including a hard kill), `stopped`; pid; port; uptime; exit code; per-start `env` overrides |
 | `POST /start/{name}` | `{ "env": {…} }` | Start if not running |
 | `POST /stop/{name}` | — | Graceful stop (SIGTERM, wait 3 s, then kill) |
 | `POST /kill/{name}` | — | **Hard kill** (SIGKILL / `TerminateProcess`); no cleanup; used for "crash" |
 | `POST /restart/{name}` | `{ "env": { "CRASH_AT": "after_pay_call", "CRASH_MODE": "once" } }` | Kill, wait for the port to free, start with env |
-| `POST /reset` | `{ "keep_running": true }` | Stop all, delete `data/<mode>/*` (including `-wal` and `-shm` files), clear fault rules, start all, wait for health |
+| `POST /reset` | `{ "keep_running": true, "env": {…} }` | Stop all (agents first), delete `data/<mode>/*` (including `-wal` and `-shm` files), clear fault rules and per-process overrides, set `env` as the world environment for every start until the next reset, start all, wait for health |
 | `POST /tests/run` | `{ "mode": "fast" \| "watch", "select": "s4" \| "official" \| "all" }` | Runs pytest as a subprocess; returns a `run_id` |
 | `GET /tests/{run_id}` | — | Progress and results (reads `results/<run_id>/`) |
 | `GET /logs/{name}?tail=200` | — | Last log lines |
@@ -66,6 +71,9 @@ scenario posts `test_step` captions through the bridge's `/annotate`.
 - **Windows:** use `subprocess.Popen(..., creationflags=CREATE_NEW_PROCESS_GROUP)`;
   `proc.kill()` maps to `TerminateProcess`. Ports can take a moment to free;
   `restart` polls the port for up to 5 s before starting again.
-- **Linux/macOS:** `proc.kill()` sends SIGKILL. Start children in their own
-  process group so a kill does not hit the supervisor.
+- **Linux/macOS:** children start with `start_new_session=True` (their own
+  session and process group). `/kill` sends SIGKILL to that group with
+  `os.killpg`, so it hits only that child; `/stop` sends SIGTERM, waits 3 s, then
+  SIGKILL. A port counts as free once it can be bound again (`SO_REUSEADDR`),
+  polled for up to 5 s. Children bind `127.0.0.1`.
 - Always run the full test suite on the **actual demo laptop** before the event.

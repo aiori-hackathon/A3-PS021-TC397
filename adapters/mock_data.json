@@ -1,1 +1,10 @@
-{}
+{
+  "bookings": {
+    "HK-204": {"what": "room", "day": "friday", "time": "5pm", "status": "confirmed"},
+    "TB-12": {"what": "table", "day": "saturday", "time": "8pm", "status": "confirmed"}
+  },
+  "payments": [
+    {"payee": "bakery", "amount": 40, "currency": "INR"},
+    {"payee": "landlord", "amount": 1200, "currency": "INR"}
+  ]
+}

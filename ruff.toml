@@ -5,3 +5,7 @@ extend-exclude = ["*.md"]
 [lint.per-file-ignores]
 # The forbidden phrases are joined on purpose so the file does not contain them.
 "tests/unit/test_wording.py" = ["FLY002"]
+
+[lint.flake8-bugbear]
+# FastAPI's dependency/body markers are meant to be used as defaults.
+extend-immutable-calls = ["fastapi.Body", "fastapi.Query", "fastapi.Depends"]

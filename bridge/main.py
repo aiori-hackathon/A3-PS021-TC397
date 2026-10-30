@@ -50,9 +50,19 @@ async def lifespan(app: FastAPI):
     if not state.db.integrity_ok():
         raise RuntimeError(f"integrity check failed for {state.db.path}")
     state.bridge = Bridge(SETTINGS, state.db)
+    jobs.startup_recovery(state.db, BOOT_ID, SETTINGS.startup_grace)  # before serving
     background = [
         asyncio.create_task(
             jobs.every("dispatcher", SETTINGS.dispatch_tick, jobs.dispatch_once, state.db)
+        ),
+        asyncio.create_task(
+            jobs.every(
+                "watchdog",
+                SETTINGS.watchdog_tick,
+                jobs.watchdog_once,
+                state.db,
+                SETTINGS.heartbeat_seconds,
+            )
         ),
     ]
     try:

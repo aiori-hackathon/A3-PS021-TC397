@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 from bridge.codecs import a2a_style, mcp_style
-from bridge.models import SCHEMA_VERSION, Envelope, Reply
+from bridge.models import SCHEMA_VERSION, Envelope
 
 
 def now_iso() -> str:
@@ -82,4 +82,104 @@ class BridgeClient:
         return [e["type"] for e in self.events(**filters)]
 
 
-__all__ = ["BridgeClient", "Reply", "now_iso"]
+class _Http:
+    def __init__(self, base_url: str, timeout: float = 10.0) -> None:
+        self.base_url = base_url
+        self.http = httpx.Client(base_url=base_url, timeout=timeout)
+
+    def close(self) -> None:
+        self.http.close()
+
+    def _get(self, path: str, **params: Any) -> Any:
+        r = self.http.get(path, params={k: v for k, v in params.items() if v is not None})
+        r.raise_for_status()
+        return r.json()
+
+    def _post(self, path: str, body: Any = None, ok: bool = True) -> Any:
+        r = self.http.post(path, json=body if body is not None else {})
+        if ok:
+            r.raise_for_status()
+        return r.json()
+
+
+class SupervisorClient(_Http):
+    def status(self) -> dict[str, Any]:
+        return self._get("/status")
+
+    def state(self, name: str) -> str:
+        return self.status()[name]["status"]
+
+    def reset(self, env: dict[str, str] | None = None, keep_running: bool = True):
+        return self._post("/reset", {"keep_running": keep_running, "env": env or {}})
+
+    def start(self, name: str, env: dict[str, str] | None = None):
+        return self._post(f"/start/{name}", {"env": env} if env is not None else {})
+
+    def stop(self, name: str):
+        return self._post(f"/stop/{name}")
+
+    def kill(self, name: str):
+        return self._post(f"/kill/{name}")
+
+    def restart(self, name: str, env: dict[str, str] | None = None):
+        return self._post(f"/restart/{name}", {"env": env} if env is not None else {})
+
+    def logs(self, name: str, tail: int = 200) -> list[str]:
+        return self._get(f"/logs/{name}", tail=tail)["lines"]
+
+
+class AgentAClient(_Http):
+    def message(self, text: str, msg_id: str | None = None) -> dict[str, Any]:
+        body = {"text": text}
+        if msg_id is not None:
+            body["msg_id"] = msg_id
+        return self._post("/message", body)
+
+    def confirm(self, task_id: str) -> dict[str, Any]:
+        return self._post("/confirm", {"task_id": task_id}, ok=False)
+
+    def cancel(self, task_id: str) -> dict[str, Any]:
+        return self._post("/cancel", {"task_id": task_id}, ok=False)
+
+    def chat(self) -> list[dict[str, Any]]:
+        return self._get("/chat")
+
+    def state(self) -> dict[str, Any]:
+        return self._get("/state")
+
+
+class AgentBClient(_Http):
+    def pause(self):
+        return self._post("/pause")
+
+    def unpause(self):
+        return self._post("/unpause")
+
+    def claim(self, task_id: str) -> httpx.Response:
+        return self.http.post("/claim", json={"task_id": task_id})
+
+    def state(self) -> dict[str, Any]:
+        return self._get("/state")
+
+
+class ActionsClient(_Http):
+    def perform(self, key: str, task_id: str, fence: int, action: str, params=None):
+        return self.http.post(
+            "/actions",
+            json={
+                "idempotency_key": key,
+                "task_id": task_id,
+                "fence": fence,
+                "action": action,
+                "params": params or {},
+            },
+        )
+
+    def ledger(self, task_id: str | None = None, action: str | None = None):
+        return self._get("/ledger", task_id=task_id, action=action)
+
+    def count(self, task_id: str | None = None, action: str | None = None) -> int:
+        return self._get("/ledger/count", task_id=task_id, action=action)["count"]
+
+    def receipt(self, receipt_id: str) -> httpx.Response:
+        return self.http.get(f"/receipts/{receipt_id}")

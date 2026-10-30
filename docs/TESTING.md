@@ -61,6 +61,11 @@ tests/
 │   ├── test_router.py
 │   ├── test_state_machine.py
 │   └── test_codecs.py            # I1, I2
+├── test_bridge_api.py           # bridge API through /mcp, /a2a, /ws (bare bridge)
+├── test_jobs.py                 # watchdog, agent health, startup recovery (bare bridge)
+├── test_actions.py              # actions ledger and fences (bare service)
+├── test_supervisor.py           # control API (world)
+├── test_agents.py               # adapter behaviour the scenarios rely on (world)
 ├── test_s0_happy_path.py
 ├── test_s1_lost_reply.py
 ├── test_s2_race.py
@@ -86,6 +91,18 @@ markers =
     mutation: protection-off check
 addopts = -m "not slow and not mutation"
 ```
+
+### Fixtures
+
+- `world`: resets the supervised world before the test (`POST /reset`) and hands
+  out clients for the supervisor, bridge, Agent A, Agent B, B2 and actions.
+  Extra environment for one test goes in a marker, for example
+  `@pytest.mark.world_env(AUTO_CONFIRM="0")`; watch mode adds
+  `AUTO_CONFIRM=1` because the demo world defaults to 0. If no supervisor is
+  running for the world, the session starts one with `--no-start`.
+- `bridge`, `fresh_bridge`, `actions_service`: one bare process on a free port
+  with its own data folder. Used by tests that must not have agents running
+  (for example, R1–R4 claim tasks by hand, which a live Agent B would race).
 
 ## Helpers
 

@@ -65,6 +65,9 @@ Flow for one message:
    confirm/cancel prompts for side-effect tasks.
 8. Follow the event stream; post a chat message when tasks complete, fail or
    are cancelled; post the final summary when the whole dialog is terminal.
+   Chat entries have a `kind` (`user`, `plan`, `notice`, `outcome`, `summary`)
+   and are keyed so that replaying the whole event log after a restart
+   rebuilds the same view without duplicates.
 
 `AUTO_CONFIRM=1` (used by most tests) confirms side-effect tasks immediately.
 
@@ -122,8 +125,9 @@ async def do_effect(task):
 If the actions call times out or returns 503, B retries **with the same key**.
 It never invents a new key.
 
-If any bridge write returns `stale_fence` or `not_owner`, B **stops working on
-that task immediately** and logs it. Someone else owns it now.
+If any bridge write returns `stale_fence`, `not_owner` or `invalid_transition`,
+or the actions service answers `stale_fence`, B **stops working on that task
+immediately** and logs it. Someone else owns it now (or it has moved on).
 
 ### Step functions
 
