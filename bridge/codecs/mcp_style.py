@@ -134,3 +134,16 @@ def encode_task_view(task: Task) -> dict[str, Any]:
 
 def decode_task_view(native: dict[str, Any]) -> Task:
     return Task.model_validate(_dict(native, "task view").get("structuredContent"))
+
+
+def peek(native: Any) -> dict[str, Any]:
+    """Best-effort identity fields from a request that may not decode. Never raises."""
+    params = native.get("params") if isinstance(native, dict) else None
+    params = params if isinstance(params, dict) else {}
+    meta = params.get("_meta") if isinstance(params.get("_meta"), dict) else {}
+    return {
+        "schema": meta.get("schema"),
+        "request_id": meta.get("request_id"),
+        "sender": meta.get("sender"),
+        "op": params.get("name"),
+    }

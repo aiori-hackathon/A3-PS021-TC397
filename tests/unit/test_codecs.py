@@ -320,3 +320,23 @@ def test_both_views_share_ids_and_agree_on_state(state):
     a = a2a_style.encode_task_view(t)
     assert m["task_id"] == a["id"] and m["dialog_id"] == a["contextId"]
     assert m["state"] == a["metadata"]["bridge_state"]
+
+
+# --- peek: best-effort read of identifying fields from a malformed message ---
+
+
+@pytest.mark.parametrize("codec", CODECS, ids=lambda c: c.__name__.split(".")[-1])
+def test_peek_reads_identity_fields(codec):
+    native = wire(codec.encode_request(envelope("task.checkpoint", schema="dialog-state/9.9")))
+    assert codec.peek(native) == {
+        "schema": "dialog-state/9.9",
+        "request_id": f"{TID}:task.checkpoint:1",
+        "sender": "agent_b",
+        "op": "task.checkpoint",
+    }
+
+
+@pytest.mark.parametrize("codec", CODECS, ids=lambda c: c.__name__.split(".")[-1])
+@pytest.mark.parametrize("native", [None, [], {}, {"params": 3}, {"message": {"metadata": 1}}])
+def test_peek_never_raises(codec, native):
+    assert set(codec.peek(native)) == {"schema", "request_id", "sender", "op"}

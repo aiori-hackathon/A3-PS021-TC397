@@ -50,20 +50,20 @@ The Pydantic models in `bridge/models.py` are the source of truth. The file
 | `op` | Sender | Changes state? | Payload | Result |
 | --- | --- | --- | --- | --- |
 | `agent.register` | any agent | yes | `protocol`, `base_url` | agent record |
-| `agent.heartbeat` | any agent | yes | `task_ids` it is working on | lease expiry times |
+| `agent.heartbeat` | any agent | yes | `task_ids` it is working on | `{leases: {task_id: lease_until}}` for the tasks it still owns |
 | `dialog.create` | Agent A | yes | `msg_id`, `text`, `tasks[]` (intent, params, steps, action, needs_confirmation, depends_on); `depends_on` holds 1-based indexes of earlier tasks in the same request | dialog + task records |
 | `dialog.get` | any | no | — | dialog + tasks |
 | `task.confirm` | Agent A | yes | — | task |
 | `task.cancel` | Agent A | yes | `reason` | task |
 | `task.claim_next` | worker | yes | — | claimed task + fence + lease, or `null` |
 | `task.claim` | worker | yes | — | claimed task + fence + lease (used by the race test) |
-| `task.resume` | worker | yes | — | all tasks this agent owned, with last checkpoints, re-claimed with new fences |
+| `task.resume` | worker | yes | — | `{tasks: [...]}`: all tasks this agent owned, with last checkpoints, re-claimed with new fences |
 | `task.checkpoint` | worker (owner) | yes | `step_index`, `step`, `output` | task |
 | `task.effect_intent` | worker (owner) | yes | `effect_key`, `action`, `params` | task (now EFFECT_PENDING) |
 | `task.effect_result` | worker (owner) | yes | `receipt_id`, `replayed` | task |
 | `task.complete` | worker (owner) | yes | `result` | task |
 | `task.fail` | worker (owner) | yes | `reason`, `retryable` | task: FAILED, or SUSPENDED if `retryable` |
-| `events.since` | any | no | `seq` | list of events after `seq` |
+| `events.since` | any | no | `seq` | `{events: [...], last_seq}`: events after `seq` (up to 1000) |
 
 ## 2. Records
 

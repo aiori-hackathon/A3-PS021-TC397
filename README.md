@@ -129,6 +129,9 @@ A3-PS021-TC397/
 │   ├── metrics.py           # counters for results
 │   ├── proxy.py             # fault-injection middleware
 │   ├── jobs.py              # watchdog, dispatcher, startup recovery
+│   ├── handlers.py          # request path: decode, inbox, op, stored reply
+│   ├── tasks.py             # dialog and task operations
+│   ├── errors.py            # BridgeError -> error reply
 │   └── codecs/
 │       ├── mcp_style.py     # JSON-RPC style <-> shared schema
 │       └── a2a_style.py     # task/message style <-> shared schema
@@ -147,6 +150,7 @@ A3-PS021-TC397/
 ├── tests/                   # see docs/TESTING.md
 ├── scripts/build_results.py # results/ -> docs/RESULTS.md tables
 ├── supervisor.py
+├── config.py               # env vars with per-mode defaults (docs/CONFIG.md)
 ├── requirements.txt
 ├── pytest.ini
 ├── .github/workflows/tests.yml

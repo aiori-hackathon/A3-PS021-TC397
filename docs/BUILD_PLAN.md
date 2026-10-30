@@ -36,6 +36,7 @@ writing code**. They are the contract between the two halves.
 ### Phase 2 — Bridge
 - [ ] `db.py` with WAL, `synchronous=FULL`, tables, `transaction()`
 - [ ] Inbox, leases (claim SQL), events, registry
+- [ ] Dispatcher (moved here from Phase 3: the hand walk below needs it)
 - [ ] `/mcp` and `/a2a` entrances with codecs; read-only routes; `/ws`
 - [ ] Rules tests R1–R4 against the running bridge (call `/a2a` and `/mcp` directly)
 - **Done when:** R1–R4 pass; `/docs` lets you create a dialog and walk a task to COMPLETED by hand.
@@ -43,7 +44,7 @@ writing code**. They are the contract between the two halves.
 ### Phase 3 — Actions service and happy path
 - [ ] `services/actions.py` with ledger and fences
 - [ ] `adapters/base.py`, Agent A, Agent B (no crash points yet)
-- [ ] Jobs: dispatcher (needed for the happy path), watchdog, startup recovery
+- [ ] Jobs: watchdog, startup recovery (the dispatcher is built in Phase 2)
 - [ ] `supervisor.py`: start order, `/status`, `/reset`
 - [ ] Test harness: clients, `wait_until`, `world` fixture; **S0**
 - **Done when:** S0 passes 20 times in a row.

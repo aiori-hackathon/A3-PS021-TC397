@@ -19,6 +19,9 @@ state, and the only one whose database must survive for recovery to work.
 | Metrics | `metrics.py` | Counters and timings computed from events |
 | Jobs | `jobs.py` | Lease watchdog, dispatcher, startup recovery |
 | Database | `db.py` | Connection, WAL, schema creation, `transaction()` helper |
+| Request path | `handlers.py` | Decode → schema check → inbox → op → refusal events → stored reply |
+| Task operations | `tasks.py` | Create, confirm, cancel (with dependents), checkpoint, effect intent/result, complete, fail |
+| Errors | `errors.py` | `BridgeError(code, message, details)` → error reply |
 
 ## Entry points
 
@@ -177,6 +180,14 @@ WHERE task_id = :task_id
 -- rowcount 1 -> claimed; rowcount 0 -> 409 already_claimed (or invalid_transition)
 ```
 
+Implementation note: the code checks these same conditions in Python inside
+the `BEGIN IMMEDIATE` transaction (which already holds the write lock), and
+the write goes through `state_machine.apply()`, a compare-and-set on
+`(state, fence)`. That keeps `UPDATE … SET state` in exactly one place.
+A claim logs `claimed` (from DISPATCHED), `resumed` (SUSPENDED, same agent)
+or `reclaimed` (SUSPENDED, a different agent). `task.claim_next` picks the
+oldest DISPATCHED or SUSPENDED task that is free and below `max_attempts`.
+
 `task.resume` uses the same statement with one extra case: the sender may
 re-claim a task it **already owns** even if the lease has not expired yet (it
 restarted quickly), matching `state IN ('IN_PROGRESS','EFFECT_PENDING') AND owner = :agent`.
@@ -185,8 +196,16 @@ sends late is rejected.
 
 - Every write by a worker carries its `fence`. If `fence < tasks.fence` →
   `409 stale_fence` and a `stale_fence_blocked` event.
-- `agent.heartbeat` extends `lease_until` for every task the sender owns with
-  the current fence.
+- `agent.heartbeat` extends `lease_until` for every listed task that the sender
+  currently owns in IN_PROGRESS or EFFECT_PENDING. Ownership implies the current
+  fence: a previous owner is no longer `owner`.
+- Checkpoints, effect intent/result, complete and fail are accepted only from
+  the owner with the current fence, while the task is IN_PROGRESS or
+  EFFECT_PENDING. A lower fence → `409 stale_fence`; another agent or a higher
+  fence → `409 not_owner`; the owner after its lease expired (SUSPENDED) →
+  `409 not_owner`; a finished task → `409 invalid_transition`.
+- A checkpoint row for a step that already has one is replaced only by a write
+  with an equal or higher fence; the `checkpoint` event then has `replaced: true`.
 - Lease times use the bridge's clock only.
 
 ## Background jobs
@@ -205,7 +224,8 @@ sends late is rejected.
 1. CREATED tasks: if any dependency is FAILED or CANCELLED → CANCELLED
    (`dependency_failed`). If all are COMPLETED → AWAITING_CONFIRMATION or
    DISPATCHED.
-2. AWAITING_CONFIRMATION tasks with `confirmed = 1` and deps done → DISPATCHED.
+2. AWAITING_CONFIRMATION tasks with `confirmed = 1` and deps done → DISPATCHED;
+   if a dependency failed or was cancelled → CANCELLED (`dependency_failed`).
 
 **Startup recovery** (once, before serving requests):
 

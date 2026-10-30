@@ -10,7 +10,7 @@ deduplication, so each one has exactly one creator and one purpose.
 | `msg_id` | `msg_17` | Agent A (or the test / dashboard sending the message) | When a user message arrives | Which user message started this? |
 | `dialog_id` | `dlg_3fa91c07d2e1` | **Bridge** | On `dialog.create` | Which conversation is this part of? |
 | `task_id` | `tsk_8c1f0a2b9e44` | **Bridge** | On `dialog.create`, one per task | Which unit of work is this? **Never changes.** |
-| `request_id` | `msg_17:create`, `tsk_8c…:checkpoint:2` | The sender | Before sending; saved or derivable | Have I already processed this exact request? |
+| `request_id` | `msg_17:create`, `tsk_8c…:checkpoint:2:1` | The sender | Before sending; saved or derivable | Have I already processed this exact request? |
 | `effect_key` | `tsk_8c1f0a2b9e44:pay` | Agent B, derived | Before a side effect | Has this side effect already happened? |
 | `fence` | `1`, `2`, `3` | **Bridge** | +1 on every successful claim or resume | Is this sender still the current owner? |
 | `attempt` | `1`, `2`, `3` | **Bridge** | +1 on every claim after the first | How many times has this task been started? |
@@ -39,14 +39,17 @@ agent rebuilds exactly the same key without having to remember it.
 | Agent A creates a dialog | `{msg_id}:create` |
 | Agent A confirms a task | `{task_id}:confirm` |
 | Agent A cancels a task | `{task_id}:cancel` |
-| Worker claims next task | `{agent_id}:claim_next:{poll_counter}` (no side effect; repeats are harmless) |
+| Agent registers | `{agent_id}:register:{boot_id}` |
+| Worker claims next task | `{agent_id}:claim_next:{boot_id}:{poll_counter}` |
+| Worker claims a specific task (S2) | `{agent_id}:claim:{task_id}:{boot_id}` |
 | Worker resumes | `{agent_id}:resume:{boot_id}` |
 | Worker checkpoints | `{task_id}:checkpoint:{step_index}:{fence}` |
 | Worker records effect intent | `{task_id}:effect_intent:{fence}` |
 | Side effect (to actions) | `{task_id}:{action}` — **no fence, no attempt** |
 | Worker reports effect result | `{task_id}:effect_result:{fence}` |
 | Worker completes | `{task_id}:complete:{fence}` |
-| Heartbeat | `{agent_id}:hb:{counter}` |
+| Worker fails a task | `{task_id}:fail:{fence}` |
+| Heartbeat | `{agent_id}:hb:{boot_id}:{counter}` |
 
 Why the effect key has no fence or attempt: a second attempt by a new owner
 must produce the **same** key, so the actions service recognises it as the
@@ -55,6 +58,12 @@ payment.
 
 Why checkpoint and complete keys include the fence: a new owner's checkpoint
 for step 2 is a different request from the old owner's checkpoint for step 2.
+
+Why the counters carry the agent's `boot_id`: poll and heartbeat counters live
+in memory and restart at 1. Without the `boot_id`, a restarted worker's first
+`claim_next` would reuse its previous life's key and get that life's stored
+reply back (an old task with an old fence). `boot_id` is a fresh random value
+per process start; it only scopes the counter, it is never a key on its own.
 
 ## Common mistakes
 

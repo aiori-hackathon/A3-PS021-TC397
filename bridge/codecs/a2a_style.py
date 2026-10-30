@@ -141,3 +141,16 @@ def decode_reply(native: dict[str, Any]) -> Reply:
         tasks = [decode_task_view(v).model_dump(mode="json") for v in native["tasks"]]
         return Reply.success({"tasks": tasks}, native.get("event_seq"))
     return Reply.success(native.get("result"), native.get("event_seq"))
+
+
+def peek(native: Any) -> dict[str, Any]:
+    """Best-effort identity fields from a request that may not decode. Never raises."""
+    message = native.get("message") if isinstance(native, dict) else None
+    message = message if isinstance(message, dict) else {}
+    metadata = message.get("metadata") if isinstance(message.get("metadata"), dict) else {}
+    return {
+        "schema": metadata.get("schema"),
+        "request_id": message.get("messageId"),
+        "sender": metadata.get("sender"),
+        "op": message.get("kind"),
+    }

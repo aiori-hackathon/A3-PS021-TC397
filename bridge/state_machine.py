@@ -3,13 +3,22 @@
 Every state change in the bridge goes through transition(). Guards are
 separate pure functions so each can be unit-tested on its own; they take
 plain values (states, flags, bridge-clock floats) rather than database rows.
+
+apply() is the only code in the project that writes `tasks.state`: it checks
+the move with transition() and then updates the row inside the caller's
+transaction, compare-and-set on (state, fence) so a stale row can never win.
 """
 
 from __future__ import annotations
 
-from typing import get_args
+from typing import TYPE_CHECKING, Any, get_args
 
 from bridge.models import State
+
+if TYPE_CHECKING:
+    import sqlite3
+
+    from bridge.db import Tx
 
 STATES: tuple[str, ...] = get_args(State)
 TERMINAL = frozenset({"COMPLETED", "FAILED", "CANCELLED"})
@@ -150,3 +159,42 @@ def can_checkpoint(state: str) -> bool:
 def expected_effect_key(task_id: str, action: str) -> str:
     """The side-effect idempotency key. Never includes the fence or the attempt."""
     return f"{task_id}:{action}"
+
+
+# --- the single writer of tasks.state ----------------------------------------
+
+# Columns apply() may change alongside the state.
+_CHANGEABLE = frozenset(
+    {"owner", "lease_until", "fence", "attempt", "effect_key", "effect_status", "result", "reason"}
+)
+
+
+def apply(
+    tx: Tx,
+    task: sqlite3.Row,
+    to_state: str,
+    guard_ok: bool,
+    *,
+    actor: str,
+    reason: str = "",
+    changes: dict[str, Any] | None = None,
+) -> None:
+    """Move one task to to_state (checked), with optional column changes, and log it."""
+    from_state = task["state"]
+    transition(from_state, to_state, guard_ok, reason)
+    changes = dict(changes or {})
+    unknown = set(changes) - _CHANGEABLE
+    if unknown:
+        raise ValueError(f"apply() cannot change {sorted(unknown)}")
+    sets = {"state": to_state, "updated_at": tx.ts, **changes}
+    cur = tx.execute(
+        f"UPDATE tasks SET {', '.join(f'{k} = ?' for k in sets)}"
+        " WHERE task_id = ? AND state = ? AND fence = ?",
+        (*sets.values(), task["task_id"], from_state, task["fence"]),
+    )
+    if cur.rowcount != 1:
+        raise InvalidTransition(from_state, to_state, "task changed underneath this request")
+    data: dict[str, Any] = {"from": from_state, "to": to_state}
+    if reason:
+        data["reason"] = reason
+    tx.event("state_changed", actor, task["dialog_id"], task["task_id"], data)
