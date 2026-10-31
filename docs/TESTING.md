@@ -132,7 +132,8 @@ Never "sleep and check it is still 1".
 
 1. Every HTTP call: `httpx.Client(timeout=HTTP_TIMEOUT)`.
 2. Every wait: `wait_until(..., timeout=…)`.
-3. Every test: `pytest-timeout` (`timeout = 20`, ×5 in watch mode).
+3. Every test: `pytest-timeout` (`timeout = 20`, ×5 in watch mode; the
+   conftest multiplies each test's timeout when `TEST_MODE=watch`).
 
 Results distinguish **FAIL** (a check was false) from **TIMEOUT** (the system
 got stuck).

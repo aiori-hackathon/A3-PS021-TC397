@@ -121,6 +121,21 @@ def pytest_sessionfinish(session, exitstatus):
     (folder / name).write_text(json.dumps(record, indent=2), encoding="utf-8")
 
 
+def watch_timeout(seconds: float, mode: str) -> float:
+    """Per-test timeout: x5 in watch mode (docs/TESTING.md#timeouts-three-levels)."""
+    return seconds * 5 if mode == "watch" else seconds
+
+
+def pytest_collection_modifyitems(config, items):
+    if TEST_MODE != "watch":
+        return
+    default = float(config.getini("timeout") or 0)
+    for item in items:
+        mark = item.get_closest_marker("timeout")
+        base = float(mark.args[0]) if mark and mark.args else default
+        item.add_marker(pytest.mark.timeout(watch_timeout(base, TEST_MODE)))
+
+
 def free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))

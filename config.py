@@ -70,7 +70,7 @@ COMMON: dict[str, object] = {
     "DISABLE_DEDUP": False,
     "AUTO_RESTART": False,
     "AUTO_RESTART_DELAY": 2.0,
-    "CORS_ORIGINS": "http://localhost:8000",
+    "CORS_ORIGINS": "http://localhost:8000,http://127.0.0.1:8000",
     "TEST_MODE": "fast",
     "CHAOS_SEED": 42,
 }

@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dialog Bridge · PS-021</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="title">
+      <h1>Dialog Bridge <span class="sub">AIORI-3 · PS-021</span></h1>
+      <span class="schema-label" title="Our own experimental schema, labelled on every message">dialog-state/0.1-experimental (not a standard)</span>
+    </div>
+    <div id="chips" class="chips" aria-live="polite"></div>
+    <div class="header-right">
+      <span id="protection-badge" class="badge"></span>
+      <div class="router-toggle" role="group" aria-label="Intent router">
+        <button class="seg active" disabled aria-pressed="true">Scripted</button>
+        <button class="seg" disabled title="LLM mode is optional (Phase 7) and not set up on this machine">LLM</button>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="live" class="tab active" aria-selected="true">Live</button>
+      <button role="tab" data-tab="tests" class="tab" aria-selected="false">Tests</button>
+      <button role="tab" data-tab="inspect" class="tab" aria-selected="false">Inspect</button>
+    </nav>
+  </header>
+
+  <div id="banner" class="banner hidden" role="status"></div>
+  <div id="caption" class="caption hidden" role="status"><span class="caption-tag">TEST</span> <span id="caption-text"></span></div>
+  <div id="toast" class="toast hidden" role="status"></div>
+
+  <!-- LIVE -------------------------------------------------------------------->
+  <main id="tab-live" class="tab-panel">
+    <section class="controls" aria-label="Demo controls">
+      <div class="ctl">
+        <span class="num">1</span>
+        <button id="btn-send" class="primary">Send Task</button>
+      </div>
+      <div class="ctl">
+        <span class="num">2</span>
+        <select id="crash-mode" aria-label="How to crash Agent B">
+          <option value="kill">kill now</option>
+          <option value="before_pay">arm: before pay</option>
+          <option value="after_pay_call">arm: after pay call</option>
+          <option value="after_pay">arm: after pay</option>
+        </select>
+        <button id="btn-crash-b" class="danger">Crash Agent B</button>
+      </div>
+      <div class="ctl">
+        <span class="num">3</span>
+        <button id="btn-cut">Disconnect A ↔ Bridge</button>
+      </div>
+      <div class="ctl">
+        <span class="num">4</span>
+        <button id="btn-retry">Retry (same key)</button>
+      </div>
+      <div class="ctl">
+        <span class="num">5</span>
+        <button id="btn-recover" class="good">Recover Agent</button>
+      </div>
+      <div class="ctl secondary">
+        <button id="btn-restart-bridge" class="danger">Restart Bridge</button>
+        <button id="btn-crash-a" class="danger">Crash Agent A</button>
+        <button id="btn-reset">Reset Demo</button>
+        <details class="more">
+          <summary>More faults</summary>
+          <div class="more-body">
+            <button id="btn-drop-a">Drop next reply to A</button>
+            <button id="btn-slow-b">Slow Agent B</button>
+            <button id="btn-lose-pay">Lose payment reply</button>
+            <button id="btn-clear-faults">Clear all faults</button>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="live-grid">
+      <article class="panel agent" id="panel-a">
+        <h2>Agent A <small>orchestrator · MCP-style</small></h2>
+        <div class="agent-status" id="a-status"></div>
+        <h3>Recent messages (JSON-RPC style)</h3>
+        <div class="msgs" id="a-msgs"></div>
+      </article>
+
+      <article class="panel chat-panel">
+        <h2>Chat</h2>
+        <div id="chat" class="chat" aria-live="polite"></div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" type="text" autocomplete="off" aria-label="Message to Agent A"
+                 value="Pay ₹40 to the bakery and email the receipt to Rahul">
+          <button type="submit" class="primary">Send</button>
+        </form>
+      </article>
+
+      <article class="panel agent" id="panel-b">
+        <h2>Agent B <small>worker · A2A-style</small></h2>
+        <div class="agent-status" id="b-status"></div>
+        <h3>Recent messages (task/message style)</h3>
+        <div class="msgs" id="b-msgs"></div>
+      </article>
+
+      <aside class="side">
+        <article class="panel">
+          <h2>Ledger</h2>
+          <div class="counters" id="ledger-counters"></div>
+          <div id="ledger-rows" class="ledger-rows"></div>
+        </article>
+        <article class="panel">
+          <h2>Links</h2>
+          <div id="links" class="links"></div>
+          <div id="rules" class="rules"></div>
+        </article>
+      </aside>
+    </section>
+
+    <section class="panel dialogs-panel">
+      <h2>Dialogs and tasks <small>click a task to inspect it</small></h2>
+      <div id="dialogs" class="dialogs"></div>
+    </section>
+  </main>
+
+  <!-- TESTS ------------------------------------------------------------------->
+  <main id="tab-tests" class="tab-panel hidden">
+    <section class="panel tests-controls">
+      <div class="seg-group" role="group" aria-label="Test mode">
+        <span>Mode</span>
+        <button class="seg active" data-mode="fast" aria-pressed="true">Fast</button>
+        <button class="seg" data-mode="watch" aria-pressed="false">Watch</button>
+      </div>
+      <button id="btn-protection" class="protect">Dedup protection: ON</button>
+      <button id="btn-run-official" class="primary">Run official five</button>
+      <button id="btn-run-all">Run all</button>
+      <button id="btn-run-chaos">Chaos run</button>
+      <span id="run-state" class="run-state"></span>
+    </section>
+    <section class="tests-grid">
+      <article class="panel">
+        <h2>Scenarios</h2>
+        <table class="tests-table" id="tests-table"></table>
+      </article>
+      <div class="tests-side">
+        <article class="panel">
+          <h2>Chaos run</h2>
+          <div class="counters" id="chaos-counters"></div>
+          <p class="hint" id="chaos-note"></p>
+        </article>
+        <article class="panel">
+          <h2>Metrics <small>this world</small></h2>
+          <table class="kv" id="metrics"></table>
+        </article>
+        <article class="panel">
+          <h2>Test output</h2>
+          <pre id="run-output" class="output"></pre>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <!-- INSPECT ----------------------------------------------------------------->
+  <main id="tab-inspect" class="tab-panel hidden">
+    <section class="panel">
+      <h2>Message inspector</h2>
+      <label>Task <select id="inspect-task"></select></label>
+      <p class="hint" id="inspect-note"></p>
+      <div class="three">
+        <div><h3>MCP-style (Agent A side)</h3><pre id="view-mcp" class="code"></pre></div>
+        <div><h3>Shared schema record</h3><pre id="view-shared" class="code"></pre></div>
+        <div><h3>A2A-style (Agent B side)</h3><pre id="view-a2a" class="code"></pre></div>
+      </div>
+    </section>
+    <section class="inspect-grid">
+      <article class="panel">
+        <h2>Message flow</h2>
+        <div class="flow-head"><span>Agent A</span><span>Bridge</span><span>Agent B / B2</span><span>Actions</span></div>
+        <div id="flow" class="flow"></div>
+      </article>
+      <article class="panel">
+        <h2>Event log</h2>
+        <div class="filters">
+          <select id="f-dialog" aria-label="Dialog"><option value="">all dialogs</option></select>
+          <select id="f-task" aria-label="Task"><option value="">all tasks</option></select>
+          <select id="f-group" aria-label="Type group">
+            <option value="">all groups</option>
+            <option>lifecycle</option><option>protection</option><option>health</option><option>testing</option>
+          </select>
+          <label><input type="checkbox" id="f-reject"> rejections only</label>
+        </div>
+        <div id="eventlog" class="eventlog"></div>
+      </article>
+    </section>
+    <section class="panel">
+      <h2>Replay <small>step through a recorded test run</small></h2>
+      <div class="replay-controls">
+        <select id="replay-run" aria-label="Run"></select>
+        <select id="replay-test" aria-label="Test"></select>
+        <button id="btn-replay-load">Load</button>
+        <button id="btn-replay-play">Play</button>
+        <input id="replay-slider" type="range" min="0" max="0" value="0" aria-label="Replay position">
+        <span id="replay-pos"></span>
+      </div>
+      <div class="replay-grid">
+        <div id="replay-event" class="replay-event"></div>
+        <div id="replay-tasks" class="replay-tasks"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

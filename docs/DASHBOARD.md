@@ -118,6 +118,39 @@ actions `/ledger`, bridge `/metrics` and `/faults`.
 4. Buttons that need the supervisor keep working while the bridge is down,
    because they call the supervisor directly (CORS is enabled for this origin).
 
+## Implementation notes
+
+- Files: `dashboard/index.html`, `app.js`, `style.css`, served by the bridge at
+  `/` and `/static/…` with `Cache-Control: no-cache` (so a browser never shows
+  an old copy after an update). System fonts only; nothing is loaded from the
+  internet (a test checks this).
+- `GET /config.json` on the bridge tells the page every port, the lease time
+  and the event groups, so nothing is hard-coded. Other services are called on
+  the page's own hostname; `CORS_ORIGINS` allows both `localhost:8000` and
+  `127.0.0.1:8000`.
+- **Retry (same key)** calls Agent A `POST /retry`, which resends its last
+  state-changing request with the same `request_id`; the bridge answers with
+  the stored reply and logs `duplicate_request`.
+- **Recover** restarts every process the supervisor reports as crashed.
+  **More faults** holds the other rules from FAULT_INJECTION.md (drop next reply
+  to A, slow Agent B, lose payment reply, clear all).
+- The ledger card leads with a red *DUPLICATE side effect* counter whenever a key
+  appears twice in the ledger (only possible with protection off).
+- **Protection switch** resets the demo world with or without
+  `DISABLE_DEDUP=1`; the state comes from the supervisor's `GET /world`.
+- **Tests tab** starts runs through the supervisor (`POST /tests/run`), one at a
+  time; progress comes from `GET /tests/{run_id}`, and statuses survive a page
+  reload (`GET /tests`). Watch mode only runs world scenarios, against the demo
+  world. *Run all* and *Chaos run* always run in fast mode in the test world;
+  the chaos counters are read live from the test world, then replaced by the
+  numbers in `results/<run>/c1/summary.json`.
+- **Replay** loads `events.json` from the supervisor (`GET /results/{run}/{test}/events.json`)
+  and rebuilds task states and effect counts step by step.
+- On WebSocket reconnect, if the bridge's `last_seq` is lower than what the
+  page has seen, the world was reset: the page clears its event log and starts
+  again from 0. Otherwise it catches up with `since`.
+- The **Scripted / LLM** toggle is shown but disabled until Phase 7.
+
 ## Accessibility and readability
 - Text at least 14 px; contrast at least 4.5:1; status never shown by colour alone
   (always a word: CRASHED, SUSPENDED).

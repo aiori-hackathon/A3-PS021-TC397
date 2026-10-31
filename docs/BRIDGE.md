@@ -36,7 +36,8 @@ Read-only and control routes for the dashboard, tests and supervisor (plain JSON
 
 | Route | Purpose |
 | --- | --- |
-| `GET /` | Serves the dashboard |
+| `GET /` | Serves the dashboard (`/static/…` for its files; `Cache-Control: no-cache`) |
+| `GET /config.json` | Ports, lease time and event groups for the dashboard |
 | `GET /health` | `{"ok": true, "boot_id": ..., "last_seq": ...}` |
 | `GET /dialogs`, `GET /dialogs/{id}` | Dialogs with their tasks |
 | `GET /tasks?state=` | All tasks, shared-schema form (optionally one state) |

@@ -71,13 +71,20 @@ class AgentA(Agent):
         self.tasks: dict[str, dict[str, Any]] = {}
         self.chat: dict[tuple, dict[str, Any]] = {}
         self.in_flight: set[str] = set()  # msg_ids whose /message call is still running
+        self.last_request: tuple[str, str, dict[str, Any]] | None = None
         self.app.post("/message")(self.route_message)
         self.app.post("/confirm")(self.route_confirm)
         self.app.post("/cancel")(self.route_cancel)
         self.app.get("/chat")(self.route_chat)
+        self.app.post("/retry")(self.route_retry)
 
     def encode(self, env: Envelope) -> dict[str, Any]:
         return mcp_style.encode_request(env, rpc_id=self.next_id("rpc"))
+
+    async def call(self, op: str, request_id: str | None = None, **kwargs: Any):
+        if op in ("dialog.create", "task.confirm", "task.cancel") and request_id:
+            self.last_request = (op, request_id, kwargs)  # for the dashboard's Retry button
+        return await super().call(op, request_id, **kwargs)
 
     # --- the one local file: msg_id counter + pending user messages ---------------------
 
@@ -265,7 +272,11 @@ class AgentA(Agent):
                         self.summary_text(dialog_id),
                         dialog_id=dialog_id,
                     )
-        if kind == "bridge_started" and data.get("previous_last_seq"):
+        if (
+            kind == "bridge_started"
+            and data.get("previous_last_seq")
+            and data.get("recovered_tasks")
+        ):
             self.say(
                 ("notice", e["seq"]),
                 "notice",
@@ -387,6 +398,23 @@ class AgentA(Agent):
 
     async def route_cancel(self, body: dict[str, Any] = Body(...)) -> JSONResponse:
         return await self._task_call("task.cancel", "cancel", body)
+
+    async def route_retry(self) -> JSONResponse:
+        """Send the last state-changing request again with the same request_id."""
+        if self.last_request is None:
+            return JSONResponse({"ok": False, "error": "nothing sent yet"}, status_code=409)
+        op, request_id, kwargs = self.last_request
+        self.log(f"retry: sending {op} {request_id} again with the same request_id")
+        reply = await self.call(op, request_id, **kwargs)
+        return JSONResponse(
+            {
+                "ok": reply.ok,
+                "op": op,
+                "request_id": request_id,
+                "event_seq": reply.event_seq,
+                "error": reply.error.model_dump(mode="json") if reply.error else None,
+            }
+        )
 
     async def route_chat(self) -> list[dict[str, Any]]:
         return list(self.chat.values())

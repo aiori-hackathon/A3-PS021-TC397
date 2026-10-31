@@ -42,8 +42,12 @@ Output goes to `logs/<mode>/<name>.log`.
 | `POST /kill/{name}` | — | **Hard kill** (SIGKILL / `TerminateProcess`); no cleanup; used for "crash" |
 | `POST /restart/{name}` | `{ "env": { "CRASH_AT": "after_pay_call", "CRASH_MODE": "once" } }` | Kill, wait for the port to free, start with env |
 | `POST /reset` | `{ "keep_running": true, "env": {…} }` | Stop all (agents first), delete `data/<mode>/*` (including `-wal` and `-shm` files), clear fault rules and per-process overrides, set `env` as the world environment for every start until the next reset, start all, wait for health |
-| `POST /tests/run` | `{ "mode": "fast" \| "watch", "select": "s4" \| "official" \| "all" }` | Runs pytest as a subprocess; returns a `run_id` |
-| `GET /tests/{run_id}` | — | Progress and results (reads `results/<run_id>/`) |
+| `GET /world` | — | Mode, the world's env, `protection` (false when `DISABLE_DEDUP` is on), `auto_restart`, `test_running` |
+| `POST /tests/run` | `{ "mode": "fast" \| "watch", "select": …, "protection": true }` | Runs pytest as a subprocess (one run at a time, `409` otherwise); returns a `run_id`. `select`: `all`, `official`, `extra`, `s0`–`s5`, `x1`–`x7`, `i3`, `rules`, `unit`, `m1`, `c1`. Watch mode: world scenarios only, from the demo supervisor |
+| `GET /tests` | — | All runs started by this supervisor, newest first |
+| `GET /tests/{run_id}?tail=N` | — | State, exit code, per-test status (live from `pytest -v`, then TIMEOUT/FAIL from the session record), last output lines |
+| `GET /results` | — | Evidence runs under `results/`, newest first, with their test folders |
+| `GET /results/{run}/{test}/{file}` | — | One evidence file (for links and Replay); path parts are validated |
 | `GET /logs/{name}?tail=200` | — | Last log lines |
 
 CORS allows the dashboard origin (`http://localhost:8000`) so its buttons work

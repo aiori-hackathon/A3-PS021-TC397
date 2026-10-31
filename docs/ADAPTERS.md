@@ -53,6 +53,7 @@ HTTP routes:
 | `POST /confirm` | `{ "task_id": "..." }` | `task.confirm` |
 | `POST /cancel` | `{ "task_id": "..." }` | `task.cancel` |
 | `GET /chat` | — | Chat transcript for the dashboard |
+| `POST /retry` | — | Resend the last state-changing request with the same `request_id` (dashboard button 4) |
 
 Flow for one message:
 

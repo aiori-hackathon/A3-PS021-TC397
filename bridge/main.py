@@ -18,7 +18,8 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import config
@@ -124,6 +125,53 @@ app.include_router(
         on_change=lambda what, data: _log_event("fault_rule_set", "test", {"change": what, **data}),
     )
 )
+
+
+# --- dashboard ---------------------------------------------------------------------
+
+DASHBOARD_DIR = config.ROOT / "dashboard"
+app.mount("/static", StaticFiles(directory=DASHBOARD_DIR), name="static")
+
+
+@app.middleware("http")
+async def no_stale_dashboard(request: Request, call_next):
+    """The dashboard changes with the code; never let a browser keep an old copy."""
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+@app.get("/", include_in_schema=False)
+def dashboard() -> FileResponse:
+    return FileResponse(DASHBOARD_DIR / "index.html")
+
+
+@app.get("/config.json")
+def dashboard_config() -> dict[str, Any]:
+    """Where everything is, so the page needs no hard-coded ports."""
+    s = SETTINGS
+    return {
+        "schema": SCHEMA_VERSION,
+        "mode": s.mode,
+        "boot_id": BOOT_ID,
+        "lease_seconds": s.lease_seconds,
+        "heartbeat_seconds": s.heartbeat_seconds,
+        "ports": {
+            "bridge": s.bridge_port,
+            "agent_a": s.agent_a_port,
+            "agent_b": s.agent_b_port,
+            "agent_b2": s.agent_b2_port,
+            "actions": s.actions_port,
+            "supervisor": s.supervisor_port,
+        },
+        "test_ports": {
+            "bridge": config.PER_MODE["test"]["BRIDGE_PORT"],
+            "actions": config.PER_MODE["test"]["ACTIONS_PORT"],
+            "supervisor": config.PER_MODE["test"]["SUPERVISOR_PORT"],
+        },
+        "event_groups": {name: sorted(types) for name, types in events.GROUPS.items()},
+    }
 
 
 # --- agent entrances ---------------------------------------------------------------
