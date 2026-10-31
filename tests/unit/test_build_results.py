@@ -102,3 +102,31 @@ def test_main_writes_the_file(tmp_path, monkeypatch):
     assert build_results.main(["x", str(make_run(tmp_path))]) == 0
     assert out.read_text().startswith("# Results")
     assert build_results.main(["x", str(tmp_path / "missing")]) == 1
+
+
+def test_recovery_skips_the_resume_transaction_itself():
+    ev = [
+        {
+            "task_id": "t",
+            "type": "checkpoint",
+            "actor": "agent_b",
+            "data": {},
+            "ts": "2026-11-02T10:00:00.000Z",
+        },
+        {
+            "task_id": "t",
+            "type": "state_changed",
+            "actor": "agent_b",
+            "data": {},
+            "ts": "2026-11-02T10:00:02.500Z",
+        },  # same transaction as the resume
+        {
+            "task_id": "t",
+            "type": "resumed",
+            "actor": "agent_b",
+            "data": {},
+            "ts": "2026-11-02T10:00:02.500Z",
+        },
+    ]
+    assert build_results.recovery_ms_from_events(ev) == 2500.0
+    assert build_results.recovery_ms_from_events(ev[:1]) is None

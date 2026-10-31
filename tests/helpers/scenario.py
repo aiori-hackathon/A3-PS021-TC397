@@ -77,13 +77,9 @@ def ms_between(start: str, end: str) -> float:
 
 def recovery_ms(world, task_id: str) -> float | None:
     """From the failing owner's last write to the task being resumed or reclaimed."""
-    events = events_of(world, task_id)
-    for i, e in enumerate(events):
-        if e["type"] in ("resumed", "reclaimed"):
-            owner = e["data"].get("previous_owner") or e["actor"]
-            before = [x for x in events[:i] if x["actor"] == owner]
-            return ms_between(before[-1]["ts"], e["ts"]) if before else None
-    return None
+    from scripts.build_results import recovery_ms_from_events
+
+    return recovery_ms_from_events(events_of(world, task_id))
 
 
 def duplicates(world) -> dict[str, int]:

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,28 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "RESULTS.md"
 NOT_RUN = "NOT RUN"
 SCHEMA = "dialog-state/0.1-experimental"
+
+
+def recovery_ms_from_events(events: list[dict[str, Any]]) -> float | None:
+    """From the failing owner's last write to the first resumed/reclaimed event.
+
+    Events written in the same transaction as the resume (same timestamp, for
+    example its state_changed) are not "before" it and are skipped.
+    """
+    for i, e in enumerate(events):
+        if e["type"] not in ("resumed", "reclaimed"):
+            continue
+        owner = e["data"].get("previous_owner") or e["actor"]
+        before = [
+            x
+            for x in events[:i]
+            if x["task_id"] == e["task_id"] and x["actor"] == owner and x["ts"] < e["ts"]
+        ]
+        if not before:
+            return None
+        delta = datetime.fromisoformat(e["ts"]) - datetime.fromisoformat(before[-1]["ts"])
+        return round(delta.total_seconds() * 1000, 1)
+    return None
 
 
 class Run:
@@ -47,6 +70,10 @@ class Run:
     def numbers(self, test_id: str) -> dict[str, Any]:
         s = self.summary(test_id)
         return s["numbers"] if s else {}
+
+    def events(self, test_id: str) -> list[dict[str, Any]]:
+        path = self.folder / test_id / "events.json"
+        return json.loads(path.read_text()) if path.exists() else []
 
     def status(self, test_id: str) -> str:
         s = self.summary(test_id)
@@ -130,7 +157,9 @@ def render(run: Run) -> str:
         "s5": "Bridge hard kill during network cut",
     }
     for tid, name in names.items():
-        n = run.numbers(tid)
+        n = dict(run.numbers(tid))
+        if tid in ("s3", "s4"):  # measured from the saved event log, not a recorded number
+            n["recovery_ms"] = recovery_ms_from_events(run.events(tid))
         w(
             f"| {tid.upper()} | {name} | {run.status(tid)} | {yes(n.get('task_id_preserved'))} "
             f"| {n.get('side_effects', '—')} | {fmt_dups(n.get('duplicates_rejected'))} "
