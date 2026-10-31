@@ -59,38 +59,27 @@
   <div id="toast" class="toast hidden" role="status"></div>
 
   <!-- LIVE -------------------------------------------------------------------->
-  <main id="tab-live" class="tab-panel">
-    <section class="controls" aria-label="Demo controls">
-      <div class="ctl">
-        <span class="num">1</span>
-        <button id="btn-send" class="primary">Send Task</button>
-      </div>
-      <div class="ctl">
-        <span class="num">2</span>
-        <select id="crash-mode" aria-label="How to crash Agent B">
-          <option value="kill">kill now</option>
-          <option value="before_pay">arm: before pay</option>
-          <option value="after_pay_call">arm: after pay call</option>
-          <option value="after_pay">arm: after pay</option>
-        </select>
-        <button id="btn-crash-b" class="danger">Crash Agent B</button>
-      </div>
-      <div class="ctl">
-        <span class="num">3</span>
-        <button id="btn-cut">Disconnect A ↔ Bridge</button>
-      </div>
-      <div class="ctl">
-        <span class="num">4</span>
-        <button id="btn-retry">Retry (same key)</button>
-      </div>
-      <div class="ctl">
-        <span class="num">5</span>
-        <button id="btn-recover" class="good">Recover Agent</button>
-      </div>
-      <div class="ctl secondary">
-        <button id="btn-restart-bridge" class="danger">Restart Bridge</button>
-        <button id="btn-crash-a" class="danger">Crash Agent A</button>
-        <button id="btn-reset">Reset Demo</button>
+  <main id="tab-live" class="tab-panel live">
+    <aside class="panel control-panel" aria-label="Control panel">
+      <header class="panel-head"><h2>Control panel</h2></header>
+
+      <section class="step">
+        <div class="step-head"><span class="step-chip">STEP 1</span><span class="step-title">Normal run</span></div>
+        <button id="btn-send" class="primary block">Send task</button>
+      </section>
+
+      <section class="step">
+        <div class="step-head"><span class="step-chip">STEP 2</span><span class="step-title">Break it</span></div>
+        <div class="row">
+          <select id="crash-mode" aria-label="How to crash Agent B">
+            <option value="kill">kill now</option>
+            <option value="before_pay">arm: before pay</option>
+            <option value="after_pay_call">arm: after pay call</option>
+            <option value="after_pay">arm: after pay</option>
+          </select>
+          <button id="btn-crash-b" class="danger">Crash agent B</button>
+        </div>
+        <button id="btn-cut" class="block">Disconnect A ↔ Bridge</button>
         <details class="more">
           <summary>More faults</summary>
           <div class="more-body">
@@ -100,50 +89,87 @@
             <button id="btn-clear-faults">Clear all faults</button>
           </div>
         </details>
-      </div>
+      </section>
+
+      <section class="step">
+        <div class="step-head"><span class="step-chip">STEP 3</span><span class="step-title">Recover</span></div>
+        <div class="row two">
+          <button id="btn-retry">Retry (same key)</button>
+          <button id="btn-recover" class="good">Recover agent</button>
+        </div>
+      </section>
+
+      <details class="adv">
+        <summary>Advanced</summary>
+        <div class="adv-body">
+          <button id="btn-restart-bridge" class="danger">Restart bridge</button>
+          <button id="btn-crash-a" class="danger">Crash agent A</button>
+          <button id="btn-reset" class="danger">Reset demo</button>
+        </div>
+      </details>
+    </aside>
+
+    <section class="panel chat-panel" aria-label="Chat">
+      <header class="panel-head"><h2>Chat <small>with Agent A</small></h2></header>
+      <div id="chat" class="chat" aria-live="polite"></div>
+      <form id="chat-form" class="chat-form">
+        <input id="chat-input" type="text" autocomplete="off" aria-label="Message to Agent A"
+               value="Pay ₹40 to the bakery and email the receipt to Rahul">
+        <button type="submit" class="primary">Send</button>
+      </form>
     </section>
 
-    <section class="live-grid">
-      <article class="panel agent" id="panel-a">
-        <h2>Agent A <small>orchestrator · MCP-style</small></h2>
+    <div class="agents">
+      <article class="panel agent-card" id="panel-a">
+        <header class="agent-head">
+          <span class="dot unknown" id="a-dot" aria-hidden="true"></span>
+          <div class="agent-title"><h2>Agent A <small>orchestrator · MCP-style</small></h2></div>
+          <span class="svc-state" id="a-badge">…</span>
+        </header>
         <div class="agent-status" id="a-status"></div>
-        <h3>Recent messages (JSON-RPC style)</h3>
-        <div class="msgs" id="a-msgs"></div>
+        <details class="msgs-wrap">
+          <summary>Messages · JSON-RPC <span class="count" id="a-count"></span></summary>
+          <div class="msgs" id="a-msgs"></div>
+        </details>
       </article>
-
-      <article class="panel chat-panel">
-        <h2>Chat</h2>
-        <div id="chat" class="chat" aria-live="polite"></div>
-        <form id="chat-form" class="chat-form">
-          <input id="chat-input" type="text" autocomplete="off" aria-label="Message to Agent A"
-                 value="Pay ₹40 to the bakery and email the receipt to Rahul">
-          <button type="submit" class="primary">Send</button>
-        </form>
-      </article>
-
-      <article class="panel agent" id="panel-b">
-        <h2>Agent B <small>worker · A2A-style</small></h2>
+      <article class="panel agent-card" id="panel-b">
+        <header class="agent-head">
+          <span class="dot unknown" id="b-dot" aria-hidden="true"></span>
+          <div class="agent-title"><h2>Agent B <small>worker · A2A-style</small></h2></div>
+          <span class="svc-state" id="b-badge">…</span>
+        </header>
         <div class="agent-status" id="b-status"></div>
-        <h3>Recent messages (task/message style)</h3>
-        <div class="msgs" id="b-msgs"></div>
+        <details class="msgs-wrap">
+          <summary>Messages · task/message <span class="count" id="b-count"></span></summary>
+          <div class="msgs" id="b-msgs"></div>
+        </details>
       </article>
+    </div>
 
-      <aside class="side">
-        <article class="panel">
-          <h2>Ledger</h2>
-          <div class="counters" id="ledger-counters"></div>
+    <aside class="right">
+      <article class="panel ledger-panel">
+        <header class="panel-head"><h2>Ledger</h2></header>
+        <div class="tiles" id="ledger-counters">
+          <div class="tile wide bad hidden" id="t-dupfx"><span class="n">0</span><span class="l"></span></div>
+          <div class="tile" id="t-pay"><span class="n">0</span><span class="l">payments made</span></div>
+          <div class="tile" id="t-send"><span class="n">0</span><span class="l">messages sent</span></div>
+          <div class="tile" id="t-book"><span class="n">0</span><span class="l">bookings made</span></div>
+          <div class="tile" id="t-rej"><span class="n">0</span><span class="l">duplicates rejected</span></div>
+        </div>
+        <details class="receipts">
+          <summary>Latest receipts <span class="count" id="rcpt-count"></span></summary>
           <div id="ledger-rows" class="ledger-rows"></div>
-        </article>
-        <article class="panel">
-          <h2>Links</h2>
-          <div id="links" class="links"></div>
-          <div id="rules" class="rules"></div>
-        </article>
-      </aside>
-    </section>
+        </details>
+      </article>
+      <article class="panel links-panel">
+        <header class="panel-head"><h2>Links</h2></header>
+        <div id="links" class="links"></div>
+        <div id="rules" class="rules"></div>
+      </article>
+    </aside>
 
-    <section class="panel dialogs-panel">
-      <h2>Dialogs and tasks <small>click a task to inspect it</small></h2>
+    <section class="panel dialogs-panel" aria-label="Dialogs and tasks">
+      <header class="panel-head"><h2>Dialogs and tasks <small>click a task to inspect it</small></h2></header>
       <div id="dialogs" class="dialogs"></div>
     </section>
   </main>

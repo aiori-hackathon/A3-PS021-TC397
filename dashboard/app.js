@@ -13,6 +13,7 @@ const S = {
   selectedTask: "", mode: "fast",
   run: null, runSelect: null, testStatus: {}, results: [], chaos: null, chaosFinal: null,
   replay: { events: [], timer: null },
+  dlgSeen: new Set(), dlgOpen: new Set(),
 };
 
 const REJECTIONS = new Set([
@@ -278,11 +279,39 @@ function renderHeader() {
 
 // --- rendering: Live tab -----------------------------------------------------------------
 
+function setHtmlKeepOpen(el, html) {
+  // Replace innerHTML only when it changed, and keep <details data-key> that the user opened.
+  if (el.dataset.html === html) return false;
+  const open = new Set([...el.querySelectorAll("details[open][data-key]")].map((d) => d.dataset.key));
+  el.innerHTML = html;
+  el.dataset.html = html;
+  for (const d of el.querySelectorAll("details[data-key]")) if (open.has(d.dataset.key)) d.open = true;
+  return true;
+}
+
+function formatPlan(text) {
+  // "1. Detected intent: payment · ₹40 · bakery · scripted mode: pay ₹40 to bakery" -> pill tags
+  const out = [];
+  for (const line of text.split("\n")) {
+    const m = line.match(/^(\d+)\. Detected intent: (.*) · (\w+) mode: (.*)$/);
+    if (m) {
+      const tags = m[2].split(" · ").map((t, i) => `<span class="tag${i === 0 ? " intent" : ""}">${esc(t)}</span>`).join("");
+      out.push(`<div class="plan-line"><span class="plan-n">${esc(m[1])}</span>${tags}` +
+        `<span class="tag mode">${esc(m[3])} mode</span><span class="plan-desc">${esc(m[4])}</span></div>`);
+    } else if (/^Detected \d+ task/.test(line)) {
+      out.push(`<div class="plan-head">${esc(line)}</div>`);
+    } else {
+      out.push(`<div class="plan-note">${esc(line)}</div>`);
+    }
+  }
+  return `<div class="plan">${out.join("")}</div>`;
+}
+
 function renderChat() {
   const el = $("chat");
   const html = S.chat.map((m) => {
-    const cls = m.kind === "user" ? "user" : m.kind === "notice" ? "notice" : m.kind === "summary" ? "agent summary" : "agent";
-    const who = { user: "You", notice: "Bridge notice", summary: "Agent A · summary" }[m.kind] || "Agent A";
+    const cls = m.kind === "user" ? "user" : m.kind === "notice" ? "notice" : m.kind === "summary" ? "summary" : "agent";
+    const who = { user: "You", notice: "Bridge notice", summary: "Summary" }[m.kind] || "Agent A";
     let actions = "";
     if (m.kind === "plan" && m.dialog_id) {
       const d = S.dialogs.find((x) => x.dialog_id === m.dialog_id);
@@ -293,10 +322,11 @@ function renderChat() {
         `<button class="danger" data-act="cancel" data-task="${esc(t.task_id)}">Cancel</button>`).join("");
       if (actions) actions = `<div class="actions">${actions}</div>`;
     }
-    return `<div class="msg ${cls}"><span class="who">${esc(who)}</span>${esc(m.text)}${actions}</div>`;
+    const body = m.kind === "plan" ? formatPlan(m.text) : esc(m.text);
+    return `<div class="msg ${cls}"><span class="who">${esc(who)}</span>${body}${actions}</div>`;
   }).join("");
   if (el.dataset.html !== html) {
-    el.innerHTML = html || '<p class="hint">Type a request below and press Send.</p>';
+    el.innerHTML = html || '<div class="empty"><b>No messages yet</b><span>Press “Send task”, or type a request below.</span></div>';
     el.dataset.html = html;
     if (S.chat.length !== S.chatCount) el.scrollTop = el.scrollHeight;
     S.chatCount = S.chat.length;
@@ -304,24 +334,27 @@ function renderChat() {
 }
 
 function protocolMessages(state, style) {
-  if (!state || !state.messages) return '<p class="hint">No messages yet.</p>';
-  return state.messages.slice(-8).reverse().map((m) => {
+  if (!state || !state.messages) return { html: '<p class="hint">No messages yet.</p>', count: 0 };
+  const list = state.messages.slice(-8).reverse();
+  const html = list.map((m) => {
     const req = m.request;
     const rid = style === "mcp" ? (req.params && req.params._meta && req.params._meta.request_id) : (req.message && req.message.messageId);
     const err = m.reply && m.reply.error;
     const label = `${m.op} ${rid || ""}${err ? " → " + (err.code || err.message) : ""}`;
-    return `<details class="pmsg ${err ? "err" : ""}"><summary>${esc(label)}</summary>` +
+    return `<details class="pmsg ${err ? "err" : ""}" data-key="${esc(m.ts + "|" + m.op)}"><summary>${esc(label)}</summary>` +
       `<pre>${json({ request: req, reply: m.reply })}</pre></details>`;
   }).join("");
+  return { html: html || '<p class="hint">No messages yet.</p>', count: list.length };
 }
 
 function agentStatus(name, state) {
   const p = S.status[name] || {};
   const word = procState(name);
-  const lines = [`<span class="state-word"><b>${esc(word)}</b>${state ? " · boot " + esc(state.boot_id) : ""}</span>`];
+  const lines = [];
+  if (state) lines.push(`<span>boot ${esc(state.boot_id)}</span>`);
   if (word === "CRASHED") {
     const at = S.crashedAt[name];
-    lines.push(`<span>exit code ${esc(p.exit_code)}${at ? " at " + at.toLocaleTimeString() : ""}</span>`);
+    lines.push(`<span><b>exit code ${esc(p.exit_code)}</b>${at ? " at " + at.toLocaleTimeString() : ""}</span>`);
   }
   if (p.env && Object.keys(p.env).length) lines.push(`<span>armed: ${esc(JSON.stringify(p.env))}</span>`);
   if (state && state.current) {
@@ -334,20 +367,37 @@ function agentStatus(name, state) {
     lines.push(`<span>${state.paused ? "paused" : "idle, polling for work"}</span>`);
   }
   if (name === "agent_a" && state) lines.push(`<span>event cursor ${state.cursor} · auto-confirm ${state.auto_confirm ? "on" : "off"}</span>`);
+  if (!state && word !== "CRASHED") lines.push("<span>no answer yet</span>");
   return lines.join("");
+}
+
+function setAgentBadge(prefix, name) {
+  const word = procState(name);
+  const tone = SVC_TONE[word] ?? "warn";
+  $(`${prefix}-dot`).className = `dot ${tone}`;
+  const badge = $(`${prefix}-badge`);
+  badge.textContent = word;
+  badge.className = `svc-state ${tone}`;
 }
 
 function renderAgents() {
   $("panel-a").classList.toggle("crashed", procState("agent_a") === "CRASHED");
+  setAgentBadge("a", "agent_a");
   $("a-status").innerHTML = agentStatus("agent_a", S.a);
-  $("a-msgs").innerHTML = protocolMessages(S.a, "mcp");
+  const a = protocolMessages(S.a, "mcp");
+  setHtmlKeepOpen($("a-msgs"), a.html);
+  $("a-count").textContent = a.count || "";
+
   const bName = S.b2 && S.b2.current && !(S.b && S.b.current) ? "agent_b2" : "agent_b";
   const bState = bName === "agent_b2" ? S.b2 : S.b;
   $("panel-b").classList.toggle("crashed", procState(bName) === "CRASHED");
   $("panel-b").querySelector("h2").innerHTML =
     `${bName === "agent_b2" ? "Agent B2" : "Agent B"} <small>worker · A2A-style</small>`;
+  setAgentBadge("b", bName);
   $("b-status").innerHTML = agentStatus(bName, bState);
-  $("b-msgs").innerHTML = protocolMessages(bState, "a2a");
+  const b = protocolMessages(bState, "a2a");
+  setHtmlKeepOpen($("b-msgs"), b.html);
+  $("b-count").textContent = b.count || "";
   renderLeases();
 }
 
@@ -360,26 +410,40 @@ function renderLeases() {
   }
 }
 
+function setTile(id, value, label) {
+  const tile = $(id);
+  const n = tile.querySelector(".n");
+  const text = String(value);
+  if (n.textContent !== text) {
+    const seen = n.dataset.seen;
+    n.textContent = text;
+    if (seen) { tile.classList.remove("bump"); void tile.offsetWidth; tile.classList.add("bump"); }
+  }
+  n.dataset.seen = "1";
+  if (label !== undefined) tile.querySelector(".l").textContent = label;
+}
+
 function renderLedger() {
   const perKey = {};
   for (const r of S.ledger) perKey[r.idempotency_key] = (perKey[r.idempotency_key] || 0) + 1;
   const count = (a) => S.ledger.filter((r) => r.action === a).length;
   const dupKeys = Object.values(perKey).filter((n) => n > 1).length;
-  const dupRejected = S.metrics.duplicate_effects_rejected ?? 0;
   const dupPayments = S.ledger.filter((r) => r.action === "pay" && perKey[r.idempotency_key] > 1).length;
-  $("ledger-counters").innerHTML =
-    (dupKeys ? `<div class="counter bad wide"><span class="n">${dupKeys}</span><span class="l">DUPLICATE side effect${dupKeys > 1 ? "s" : ""}: same key performed twice${dupPayments ? ` (${dupPayments} payment rows)` : ""}</span></div>` : "") +
-    [
-      ["payments made", count("pay")], ["messages sent", count("send")],
-      ["bookings made", count("reserve")], ["duplicates rejected", dupRejected],
-    ].map(([l, n]) => {
-      const bad = l === "payments made" && dupPayments;
-      return `<div class="counter ${bad ? "bad" : ""}"><span class="n">${n}</span><span class="l">${l}</span></div>`;
-    }).join("");
-  $("ledger-rows").innerHTML = S.ledger.slice(-6).reverse().map((r) => {
+  setTile("t-pay", count("pay"));
+  $("t-pay").classList.toggle("bad", dupPayments > 0);
+  setTile("t-send", count("send"));
+  setTile("t-book", count("reserve"));
+  setTile("t-rej", S.metrics.duplicate_effects_rejected ?? 0);
+  $("t-dupfx").classList.toggle("hidden", !dupKeys);
+  setTile("t-dupfx", dupKeys,
+    `DUPLICATE side effect${dupKeys > 1 ? "s" : ""}: same key performed twice${dupPayments ? ` (${dupPayments} payment rows)` : ""}`);
+
+  const last = S.ledger.slice(-6).reverse();
+  setHtmlKeepOpen($("ledger-rows"), last.map((r) => {
     const dup = perKey[r.idempotency_key] > 1;
     return `<div class="lrow ${dup ? "dup" : ""}">${dup ? "DUPLICATE " : ""}${esc(r.action)} ${esc(r.receipt_id)}<br>key ${esc(r.idempotency_key)}</div>`;
-  }).join("") || '<p class="hint">No side effects yet.</p>';
+  }).join("") || '<p class="hint">No side effects yet.</p>');
+  $("rcpt-count").textContent = S.ledger.length || "";
 }
 
 function rulesFor(link) {
@@ -388,17 +452,36 @@ function rulesFor(link) {
 
 function renderLinks() {
   const bridgeUp = S.wsUp;
-  const row = (label, link, procs) => {
+  const hasB2 = S.status.agent_b2 && S.status.agent_b2.status !== "stopped";
+  const linkState = (link, procs) => {
     const rules = rulesFor(link);
     const down = !bridgeUp || procs.some((p) => procState(p) !== "online");
     const cut = rules.some((r) => r.action === "cut");
-    const state = down ? "DOWN" : cut ? "CUT" : rules.length ? "FAULTS ARMED" : "connected";
-    return `<div class="link ${state === "connected" ? "ok" : "bad"}"><span>${esc(label)}</span><span class="st">${state}</span></div>`;
+    if (down) return { word: "DOWN", tone: "bad" };
+    if (cut) return { word: "CUT", tone: "bad" };
+    if (rules.length) return { word: "FAULTS ARMED", tone: "warn" };
+    return { word: "connected", tone: "ok" };
   };
-  const rows = [row("Agent A ↔ Bridge", "agent_a", ["agent_a"]), row("Bridge ↔ Agent B", "agent_b", ["agent_b"])];
-  if (S.status.agent_b2 && S.status.agent_b2.status !== "stopped") rows.push(row("Bridge ↔ Agent B2", "agent_b2", ["agent_b2"]));
-  rows.push(row("Workers → Actions", "actions", ["actions"]));
-  $("links").innerHTML = rows.join("");
+  const links = [
+    { label: "Agent A ↔ Bridge", ...linkState("agent_a", ["agent_a"]) },
+    { label: "Bridge ↔ Agent B", ...linkState("agent_b", ["agent_b"]) },
+  ];
+  if (hasB2) links.push({ label: "Bridge ↔ Agent B2", ...linkState("agent_b2", ["agent_b2"]) });
+  links.push({ label: "Workers → Actions", ...linkState("actions", ["actions"]) });
+
+  const worst = (list) => list.find((l) => l.tone === "bad") || list.find((l) => l.tone === "warn") || list[0];
+  const wire = (l) => `<span class="wire ${l.tone}" title="${esc(l.label)}: ${esc(l.word)}"><i>${l.tone === "bad" ? "✕" : l.tone === "warn" ? "!" : ""}</i></span>`;
+  const bLinks = links.filter((l) => l.label.includes("Agent B"));
+  const diagram =
+    `<div class="diagram" role="img" aria-label="${esc(links.map((l) => `${l.label} ${l.word}`).join(", "))}">` +
+    `<span class="node">A</span>${wire(links[0])}<span class="node">Bridge</span>${wire(worst(bLinks))}` +
+    `<span class="node">${hasB2 ? "B/B2" : "B"}</span>${wire(links[links.length - 1])}<span class="node">Actions</span></div>`;
+  const problems = links.filter((l) => l.tone !== "ok");
+  const notes = problems.length
+    ? problems.map((l) => `<div class="link ${l.tone}"><span>${esc(l.label)}</span><span class="st">${esc(l.word)}</span></div>`).join("")
+    : '<div class="link ok">All links connected</div>';
+  setHtmlKeepOpen($("links"), diagram + notes);
+
   const all = [...S.faults, ...S.actionsFaults];
   $("rules").innerHTML = all.map((r) => `<div class="rule">${esc(r.id)} ${esc(r.link)} ${esc(r.action)}` +
     `${Object.keys(r.match).length ? " " + esc(JSON.stringify(r.match)) : ""} · ${r.count === -1 ? "until removed" : r.count + " left"}` +
@@ -413,20 +496,20 @@ function renderLinks() {
   const crashed = Object.entries(S.status).filter(([, p]) => p.status === "crashed").map(([n]) => n);
   const recover = $("btn-recover");
   recover.disabled = !crashed.length;
-  recover.textContent = crashed.length ? `Recover ${crashed.join(", ")}` : "Recover Agent";
+  recover.textContent = crashed.length ? `Recover ${crashed.join(", ")}` : "Recover agent";
 }
 
-function dots(t) {
+function stepProgress(t) {
   const n = t.steps.length;
   const done = t.state === "COMPLETED" ? n : t.last_checkpoint ? t.last_checkpoint.step_index + 1 : 0;
-  return "●".repeat(done) + "○".repeat(n - done);
+  return `step ${done}/${n}`;
 }
 
 function taskMeta(t) {
   if (t.state === "CREATED" && t.depends_on.length) return `waiting on task ${t.depends_on.join(", ")}`;
   if (t.state === "AWAITING_CONFIRMATION") return "waiting for confirmation";
   if (t.state === "DISPATCHED") return "ready; any worker may claim it";
-  const bits = [];
+  const bits = [stepProgress(t)];
   if (t.owner) bits.push(`owner ${t.owner}`);
   if (t.fence) bits.push(`fence ${t.fence}`);
   if (t.attempt) bits.push(`attempt ${t.attempt}`);
@@ -439,16 +522,57 @@ function taskMeta(t) {
   return esc(bits.join(" · ")) + lease;
 }
 
+const STATE_TONE = { COMPLETED: "ok", FAILED: "bad", CANCELLED: "bad", SUSPENDED: "warn", EFFECT_PENDING: "warn" };
+
+function stepper(t) {
+  // CREATED -> [AWAITING_CONFIRMATION] -> DISPATCHED -> IN_PROGRESS -> [EFFECT_PENDING] -> COMPLETED
+  const steps = ["CREATED"];
+  if (t.needs_confirmation) steps.push("AWAITING_CONFIRMATION");
+  steps.push("DISPATCHED", "IN_PROGRESS");
+  if (t.action) steps.push("EFFECT_PENDING");
+  const failed = t.state === "FAILED" || t.state === "CANCELLED";
+  steps.push(failed ? t.state : "COMPLETED");
+  let now = steps.indexOf(t.state);
+  let reached = now;
+  if (t.state === "SUSPENDED") {
+    now = steps.indexOf("IN_PROGRESS") + 1;
+    steps.splice(now, 0, "SUSPENDED");
+    reached = now;
+  } else if (failed) {
+    now = steps.length - 1;
+    reached = t.attempt > 0 ? steps.indexOf("IN_PROGRESS") : 0; // how far it got before it ended
+  }
+  return `<ol class="stepper" aria-label="lifecycle of task ${t.index}: ${esc(t.state)}">` + steps.map((name, i) => {
+    const cls = i === now ? `now ${STATE_TONE[t.state] || ""}` : i <= reached ? "done" : "";
+    return `<li class="${cls}" title="${esc(name)}"></li>`;
+  }).join("") + "</ol>";
+}
+
 function renderDialogs() {
-  const html = S.dialogs.slice(-8).reverse().map((d) => {
-    const rows = d.task_ids.map((id) => S.byId[id]).filter(Boolean).map((t) =>
-      `<div class="trow" data-task="${esc(t.task_id)}" title="${esc(t.task_id)}">` +
-      `<span>task ${t.index}</span><span>${esc(t.intent)}</span><span class="dots">${dots(t)}</span>` +
+  const list = S.dialogs.slice(-8).reverse();
+  list.forEach((d, i) => {
+    if (!S.dlgSeen.has(d.dialog_id)) {
+      S.dlgSeen.add(d.dialog_id);
+      if (i === 0) S.dlgOpen.add(d.dialog_id); // the newest dialog starts expanded, older ones collapsed
+    }
+  });
+  const head = `<div class="tgrid thead"><span>Task</span><span>Intent</span><span>Lifecycle</span><span>State</span><span>Details</span></div>`;
+  const html = list.map((d) => {
+    const tasks = d.task_ids.map((id) => S.byId[id]).filter(Boolean);
+    const rows = tasks.map((t) =>
+      `<div class="tgrid trow" data-task="${esc(t.task_id)}" tabindex="0" role="button" title="${esc(t.task_id)}">` +
+      `<span>task ${t.index}</span><span>${esc(t.intent)}</span>${stepper(t)}` +
       `<span><span class="state ${esc(t.state)}">${esc(t.state)}</span></span>` +
       `<span class="tmeta">${taskMeta(t)}</span></div>`).join("");
-    return `<div class="dialog"><div class="dialog-head">dialog ${esc(d.dialog_id)} · ${esc(d.msg_id)} · “${esc(d.text)}”</div>${rows}</div>`;
+    const done = tasks.filter((t) => t.state === "COMPLETED").length;
+    return `<details class="dlg" data-key="${esc(d.dialog_id)}"${S.dlgOpen.has(d.dialog_id) ? " open" : ""}>` +
+      `<summary><span class="dlg-text">“${esc(d.text)}”</span>` +
+      `<span class="dlg-meta">${esc(d.msg_id)} · ${esc(short(d.dialog_id))} · ${done}/${tasks.length} done</span></summary>` +
+      `${head}${rows}</details>`;
   }).join("");
-  $("dialogs").innerHTML = html || '<p class="hint">No dialogs yet. Send a task to start one.</p>';
+  const el = $("dialogs");
+  const content = html || '<div class="empty"><b>No dialogs yet</b><span>Send a task to start one.</span></div>';
+  if (el.dataset.html !== content) { el.innerHTML = content; el.dataset.html = content; }
   renderLeases();
 }
 
@@ -842,7 +966,17 @@ function bind() {
   });
   $("btn-restart-bridge").addEventListener("click", async () => { await sup("/restart/bridge"); poll(); });
   $("btn-crash-a").addEventListener("click", async () => { await sup("/kill/agent_a"); poll(); });
-  $("btn-reset").addEventListener("click", async () => {
+  let resetTimer = null;
+  const resetBtn = $("btn-reset");
+  const disarmReset = () => { clearTimeout(resetTimer); resetBtn.classList.remove("armed"); resetBtn.textContent = "Reset demo"; };
+  resetBtn.addEventListener("click", async () => {
+    if (!resetBtn.classList.contains("armed")) {  // first click only arms it
+      resetBtn.classList.add("armed");
+      resetBtn.textContent = "Click again to confirm";
+      resetTimer = setTimeout(disarmReset, 4000);
+      return;
+    }
+    disarmReset();
     const env = S.world && !S.world.protection ? { DISABLE_DEDUP: "1" } : {};
     toast("Resetting the demo world…");
     await sup("/reset", { keep_running: true, env }, 60000);
@@ -866,12 +1000,21 @@ function bind() {
     await Promise.all([api(port("bridge"), "/faults", { method: "DELETE" }), api(port("actions"), "/faults", { method: "DELETE" })]);
     poll();
   });
-  $("dialogs").addEventListener("click", (ev) => {
-    const row = ev.target.closest(".trow");
-    if (!row) return;
+  const openTask = (row) => {
+    if (!row || !row.dataset.task) return;
     S.selectedTask = row.dataset.task;
     document.querySelector('.tab[data-tab="inspect"]').click();
+  };
+  $("dialogs").addEventListener("click", (ev) => openTask(ev.target.closest(".trow")));
+  $("dialogs").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" || ev.key === " ") { const row = ev.target.closest(".trow"); if (row) { ev.preventDefault(); openTask(row); } }
   });
+  $("dialogs").addEventListener("toggle", (ev) => {  // toggle does not bubble: capture it
+    const d = ev.target;
+    if (!d.dataset || !d.dataset.key) return;
+    if (d.open) S.dlgOpen.add(d.dataset.key); else S.dlgOpen.delete(d.dataset.key);
+  }, true);
+  $("ledger-counters").addEventListener("animationend", (ev) => ev.target.classList.remove("bump"));
 
   for (const b of document.querySelectorAll("[data-mode]")) {
     b.addEventListener("click", () => {
@@ -940,7 +1083,16 @@ function restoreMode() {
   if (btn) btn.click();
 }
 
+function trackStackHeight() {
+  // The Live tab fills the window below the sticky top stack, whatever banners are showing.
+  const stack = document.querySelector(".top-stack");
+  const set = () => document.documentElement.style.setProperty("--stack-h", `${stack.offsetHeight}px`);
+  set();
+  if (window.ResizeObserver) new ResizeObserver(set).observe(stack);
+}
+
 async function start() {
+  trackStackHeight();
   const r = await fetch("/config.json");
   S.cfg = await r.json();
   bind();
