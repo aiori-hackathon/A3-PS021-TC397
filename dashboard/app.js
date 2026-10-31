@@ -207,9 +207,13 @@ async function poll() {
 
 // --- rendering: header --------------------------------------------------------------------
 
-function chip(label, state, extra) {
-  const cls = { online: "ok", running: "ok", starting: "warn", CRASHED: "bad", stopped: "", "?": "warn" }[state] ?? "";
-  return `<span class="chip ${cls}">${esc(label)} <b>${esc(state)}</b>${extra ? " · " + esc(extra) : ""}</span>`;
+const SVC_TONE = { online: "ok", starting: "warn", CRASHED: "bad", stopped: "warn", "?": "warn" };
+
+function svcRow(label, state, extra) {
+  const tone = SVC_TONE[state] ?? "warn";
+  return `<div class="svc ${tone}"><span class="dot ${tone}" aria-hidden="true"></span>` +
+    `<span class="svc-name">${esc(label)}${extra ? `<span class="svc-note">${esc(extra)}</span>` : ""}</span>` +
+    `<span class="svc-state">${esc(state)}</span></div>`;
 }
 
 function heartbeatAgo(agentId) {
@@ -226,24 +230,44 @@ function procState(name) {
   return { running: "online", starting: "starting", crashed: "CRASHED", stopped: "stopped" }[p.status] || p.status;
 }
 
+const SVC_LABEL = { bridge: "Bridge", agent_a: "Agent A", agent_b: "Agent B", agent_b2: "Agent B2", actions: "Actions" };
+
+function healthSummary(rows) {
+  // rows: [{ name, state }]. One short phrase for the top-bar pill, worst problem first.
+  if (!S.supervisorUp) return { text: "Supervisor unreachable", tone: "warn" };
+  const crashed = rows.filter((r) => r.state === "CRASHED");
+  if (crashed.length === 1) return { text: `${SVC_LABEL[crashed[0].name]} crashed`, tone: "bad" };
+  if (crashed.length > 1) return { text: `${crashed.length} services crashed`, tone: "bad" };
+  const bridge = rows.find((r) => r.name === "bridge");
+  if (bridge && bridge.state !== "online") return { text: "Bridge reconnecting", tone: "warn" };
+  const online = rows.filter((r) => r.state === "online").length;
+  return { text: `${online}/${rows.length} online`, tone: online === rows.length ? "ok" : "warn" };
+}
+
 function renderHeader() {
-  const parts = [];
-  const bridge = S.wsUp ? "online" : procState("bridge") === "online" ? "starting" : procState("bridge");
-  parts.push(chip(`Bridge :${port("bridge")}`, bridge));
-  parts.push(chip("Agent A", procState("agent_a"), heartbeatAgo("agent_a")));
-  parts.push(chip("Agent B", procState("agent_b"), heartbeatAgo("agent_b")));
-  if (S.status.agent_b2 && S.status.agent_b2.status !== "stopped") {
-    parts.push(chip("Agent B2", procState("agent_b2"), heartbeatAgo("agent_b2")));
-  }
-  parts.push(chip("Actions", procState("actions")));
-  if (!S.supervisorUp) parts.push(chip("Supervisor", "?", "not reachable"));
-  $("chips").innerHTML = parts.join("");
+  const bridgeProc = procState("bridge");
+  const bridge = S.wsUp ? "online" : bridgeProc === "online" ? "starting" : bridgeProc;
+  const rows = [{ name: "bridge", state: bridge }, { name: "agent_a", state: procState("agent_a") }, { name: "agent_b", state: procState("agent_b") }];
+  if (S.status.agent_b2 && S.status.agent_b2.status !== "stopped") rows.push({ name: "agent_b2", state: procState("agent_b2") });
+  rows.push({ name: "actions", state: procState("actions") });
+
+  const html = rows.map((r) => svcRow(
+    r.name === "bridge" ? `Bridge :${port("bridge")}` : SVC_LABEL[r.name], r.state,
+    r.name === "bridge" || r.name === "actions" ? "" : heartbeatAgo(r.name))).join("") +
+    (S.supervisorUp ? "" : svcRow("Supervisor", "?", "not reachable"));
+  const chips = $("chips");
+  if (chips.dataset.html !== html) { chips.innerHTML = html; chips.dataset.html = html; }
+
+  const sum = healthSummary(rows);
+  $("health-text").textContent = sum.text;
+  $("health-dot").className = `dot ${sum.tone}`;
 
   const on = !S.world || S.world.protection;
   const badge = $("protection-badge");
   badge.textContent = on ? "Dedup protection: ON" : "Dedup protection: OFF (testing only)";
   badge.className = "badge " + (on ? "on" : "off");
   document.body.classList.toggle("protection-off", !on);
+  $("protection-banner").classList.toggle("hidden", on);
   const pbtn = $("btn-protection");
   pbtn.textContent = on ? "Dedup protection: ON" : "Dedup protection: OFF (testing only)";
   pbtn.classList.toggle("off", !on);
@@ -771,12 +795,20 @@ function bind() {
         t.setAttribute("aria-selected", t === tab);
       }
       for (const p of document.querySelectorAll(".tab-panel")) p.classList.add("hidden");
-      $(`tab-${tab.dataset.tab}`).classList.remove("hidden");
+      const panel = $(`tab-${tab.dataset.tab}`);
+      panel.classList.remove("hidden");
+      panel.classList.add("enter");
+      panel.addEventListener("animationend", () => panel.classList.remove("enter"), { once: true });
       render();
       if (tab.dataset.tab === "inspect") renderInspector();
       if (tab.dataset.tab === "tests") loadResults();
     });
   }
+  const health = $("health"), healthBtn = $("health-btn");
+  const setHealth = (open) => { health.classList.toggle("open", open); healthBtn.setAttribute("aria-expanded", open); };
+  healthBtn.addEventListener("click", () => setHealth(!health.classList.contains("open")));
+  document.addEventListener("click", (ev) => { if (!health.contains(ev.target)) setHealth(false); });
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") setHealth(false); });
   $("chat-form").addEventListener("submit", (ev) => { ev.preventDefault(); sendText($("chat-input").value); });
   $("btn-send").addEventListener("click", () => sendText($("chat-input").value));
   $("chat").addEventListener("click", async (ev) => {
