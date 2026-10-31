@@ -115,7 +115,7 @@ function addEvent(e) {
     for (const old of S.events.splice(0, 1000)) S.seen.delete(old.seq);
   }
   S.lastSeq = Math.max(S.lastSeq, e.seq);
-  if (e.type === "test_step") {
+  if (e.type === "test_step" && Date.now() - Date.parse(e.ts) < 20000) {  // not a caption replayed from history
     $("caption-text").textContent = e.data.text;
     $("caption").classList.remove("hidden");
     S.captionAt = Date.now();
@@ -579,19 +579,21 @@ function renderDialogs() {
 // --- rendering: Tests tab ------------------------------------------------------------------
 
 function statusOf(id) {
-  if (id === "rules") return worst(["r1", "r2", "r3", "r4"].map((r) => S.testStatus[r]));
-  if (id === "m1") return worst(["m1_s1", "m1_s4"].map((r) => S.testStatus[r]));
+  const running = S.run && S.run.state === "running";
+  // R1-R4 and M1 are several tests each; they only count as running when this run includes them.
+  if (id === "rules") return worst(["r1", "r2", "r3", "r4"].map((r) => S.testStatus[r]), running && ["all", "rules"].includes(S.runSelect));
+  if (id === "m1") return worst(["m1_s1", "m1_s4"].map((r) => S.testStatus[r]), running && S.runSelect === "m1");
   const st = S.testStatus[id];
   if (st) return st;
-  if (S.run && S.run.state === "running" && (SELECTION_IDS[S.runSelect] || [S.runSelect]).includes(id)) return "RUNNING";
+  if (running && (SELECTION_IDS[S.runSelect] || [S.runSelect]).includes(id)) return "RUNNING";
   return "NOT RUN";
 }
 
-function worst(list) {
+function worst(list, running) {
   const known = list.filter(Boolean);
-  if (!known.length) return S.run && S.run.state === "running" ? "RUNNING" : "NOT RUN";
   for (const s of ["TIMEOUT", "FAIL", "ERROR"]) if (known.includes(s)) return s;
-  return known.length === list.length ? "PASS" : "RUNNING";
+  if (known.length === list.length) return "PASS";
+  return running ? "RUNNING" : "NOT RUN";
 }
 
 function evidenceFor(id) {
@@ -600,35 +602,69 @@ function evidenceFor(id) {
   return null;
 }
 
+const BAD_STATUS = new Set(["FAIL", "ERROR", "TIMEOUT"]);
+const SUMMARY_GROUPS = [
+  ["Official", "Official (S1–S5)"], ["Extra", "Extra"], ["Interop", "Interop"], ["Rules", "Rules"],
+];
+
+function groupStats(items) {
+  const sts = items.map(([id]) => statusOf(id));
+  const count = (f) => sts.filter(f).length;
+  return {
+    total: sts.length, pass: count((x) => x === "PASS"), fail: count((x) => BAD_STATUS.has(x)),
+    running: count((x) => x === "RUNNING"), notRun: count((x) => x === "NOT RUN"),
+  };
+}
+
+function summaryTile(label, st) {
+  const tone = st.fail ? "bad" : st.pass === st.total ? "ok" : "";
+  const bits = [];
+  if (st.fail) bits.push(`${st.fail} failing`);
+  if (st.running) bits.push(`${st.running} running`);
+  if (st.notRun) bits.push(`${st.notRun} not run`);
+  return `<div class="tile ${tone}"><span class="n">${st.pass}/${st.total}</span>` +
+    `<span class="l">${esc(label)} · passing</span><span class="sub">${esc(bits.join(" · ") || "all passing")}</span></div>`;
+}
+
+function testRow(id, name) {
+  const st = statusOf(id);
+  const ev = evidenceFor(id);
+  const menu = ev
+    ? `<details class="rowmenu"><summary aria-label="More actions for ${esc(id.toUpperCase())}">⋯</summary><div class="menu-pop">` +
+      `<a href="${esc(url(port("supervisor"), `/results/${ev.run}/${ev.test}/summary.json`))}" target="_blank" rel="noopener">Evidence file</a>` +
+      `<button data-replay="${esc(ev.run)}|${esc(ev.test)}">Replay in Inspect</button></div></details>`
+    : "<span></span>";
+  return `<div class="test-row"><span class="tid">${esc(id.toUpperCase())}</span><span class="tname">${esc(name)}</span>` +
+    `<span class="status ${st.replace(" ", "_")}">${esc(st)}</span>` +
+    `<button class="run" data-run="${esc(id)}" aria-label="Run ${esc(id.toUpperCase())}">Run</button>${menu}</div>`;
+}
+
 function renderTests() {
-  const rows = [];
-  for (const [group, items] of TESTS) {
-    rows.push(`<tr><th colspan="4">${esc(group)}</th></tr>`);
-    for (const [id, name] of items) {
-      const st = statusOf(id);
-      const ev = evidenceFor(id);
-      const evid = ev
-        ? `<a href="${esc(url(port("supervisor"), `/results/${ev.run}/${ev.test}/summary.json`))}" target="_blank" rel="noopener">evidence</a> ` +
-          `<button data-replay="${esc(ev.run)}|${esc(ev.test)}">Replay</button>`
-        : "";
-      rows.push(`<tr><td><b>${esc(id.toUpperCase())}</b> ${esc(name)}</td>` +
-        `<td><span class="status ${st.replace(" ", "_")}">${esc(st)}</span></td>` +
-        `<td><button data-run="${esc(id)}">Run</button></td><td>${evid}</td></tr>`);
-    }
-  }
+  const cards = TESTS.map(([group, items]) => {
+    const st = groupStats(items);
+    return `<section class="panel test-card"><header class="test-card-head"><h2>${esc(group)}</h2>` +
+      `<span class="hint">${st.pass}/${st.total} passing</span></header>` +
+      items.map(([id, name]) => testRow(id, name)).join("") + "</section>";
+  }).join("");
   const table = $("tests-table");
-  const html = rows.join("");
-  if (table.dataset.html !== html) { table.innerHTML = html; table.dataset.html = html; }
+  if (table.dataset.html !== cards) { table.innerHTML = cards; table.dataset.html = cards; }
+
+  const tiles = SUMMARY_GROUPS.map(([label, group]) =>
+    summaryTile(label, groupStats(TESTS.find(([g]) => g === group)[1]))).join("");
+  const summary = $("test-summary");
+  if (summary.dataset.html !== tiles) { summary.innerHTML = tiles; summary.dataset.html = tiles; }
 
   const run = S.run;
   $("run-state").textContent = run
     ? `${run.state === "running" ? "Running" : "Finished"} ${run.select} (${run.mode}${run.protection ? "" : ", protection OFF"})` +
       (run.state === "done" ? ` · exit ${run.exit_code}` : "")
-    : "";
+    : "No tests run yet. Start with “Run official five”.";
   if (run && run.output) {
     const out = $("run-output");
     out.textContent = run.output.join("\n");
     out.scrollTop = out.scrollHeight;
+  } else if (!run) {
+    $("run-output").textContent = "Output appears here while tests run.";
   }
   for (const b of document.querySelectorAll("[data-run], #btn-run-official, #btn-run-all, #btn-run-chaos")) {
     b.disabled = !!(run && run.state === "running");
@@ -647,13 +683,13 @@ function renderTests() {
   $("metrics").innerHTML = rows2.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v ?? 0)}</td></tr>`).join("");
 
   const c = S.chaosFinal || S.chaos;
-  $("chaos-counters").innerHTML = c ? [
-    ["tasks", c.tasks], ["faults applied", c.faults], ["crashes", c.crashes],
-    ["duplicates rejected", c.dupRejected],
-  ].map(([l, n]) => `<div class="counter"><span class="n">${esc(n)}</span><span class="l">${l}</span></div>`).join("") +
-    `<div class="counter ${c.dupEffects ? "bad" : "good"}"><span class="n">${esc(c.dupEffects)}</span><span class="l">duplicate side effects (must stay 0)</span></div>` +
-    `<div class="counter ${c.stuck ? "bad" : "good"}"><span class="n">${esc(c.stuck ?? "—")}</span><span class="l">stuck tasks</span></div>`
-    : '<p class="hint">Press "Chaos run": 50 messages, random faults on every link, random crashes, two workers. It runs in the separate test world.</p>';
+  const tile = (n, l) => `<div class="tile"><span class="n">${esc(n)}</span><span class="l">${l}</span></div>`;
+  $("chaos-counters").innerHTML = c
+    ? tile(c.tasks, "tasks") + tile(c.faults, "faults applied") + tile(c.crashes, "crashes") + tile(c.dupRejected, "duplicates rejected") +
+      `<div class="tile wide emph ${c.dupEffects ? "bad" : "good"}"><span class="n">${esc(c.dupEffects)}</span>` +
+      `<span class="l">duplicate side effects (must stay 0)${c.dupEffects ? " — PROBLEM" : ""}</span></div>` +
+      `<div class="tile wide ${c.stuck ? "bad" : ""}"><span class="n">${esc(c.stuck ?? "—")}</span><span class="l">stuck tasks</span></div>`
+    : '<div class="empty wide"><b>No chaos run yet</b><span>50 messages, random faults on every link, random crashes and two workers, in the separate test world.</span></div>';
   $("chaos-note").textContent = S.chaosFinal ? `Final numbers from ${S.chaosFinal.source}.` : S.chaos ? "Live, from the test world." : "";
 }
 
@@ -684,14 +720,14 @@ async function pollChaos() {
   };
 }
 
-async function loadChaosFinal() {
-  const ev = await api(port("supervisor"), `/results/${encodeURIComponent(S.run.run_id)}/c1/summary.json`);
+async function loadChaosFinal(runId = S.run.run_id) {
+  const ev = await api(port("supervisor"), `/results/${encodeURIComponent(runId)}/c1/summary.json`);
   if (!ev.ok) return;
   const n = ev.data.numbers;
   S.chaosFinal = {
     tasks: n.tasks, faults: n.bridge_faults_applied, crashes: n.crashes,
     dupRejected: n.duplicate_effects_rejected, dupEffects: n.duplicate_side_effects, stuck: n.stuck_tasks,
-    source: `results/${S.run.run_id}/c1 (${ev.data.status})`,
+    source: `results/${runId}/c1 (${ev.data.status})`,
   };
 }
 
@@ -933,6 +969,9 @@ function bind() {
   healthBtn.addEventListener("click", () => setHealth(!health.classList.contains("open")));
   document.addEventListener("click", (ev) => { if (!health.contains(ev.target)) setHealth(false); });
   document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") setHealth(false); });
+  document.addEventListener("click", (ev) => {  // close any open row menu when clicking elsewhere
+    for (const m of document.querySelectorAll(".rowmenu[open]")) if (!m.contains(ev.target)) m.open = false;
+  });
   $("chat-form").addEventListener("submit", (ev) => { ev.preventDefault(); sendText($("chat-input").value); });
   $("btn-send").addEventListener("click", () => sendText($("chat-input").value));
   $("chat").addEventListener("click", async (ev) => {
@@ -1040,6 +1079,7 @@ function bind() {
     if (run) runTests(run.dataset.run);
     const rep = ev.target.closest("button[data-replay]");
     if (rep) {
+      for (const m of document.querySelectorAll(".rowmenu[open]")) m.open = false;
       const [runId, test] = rep.dataset.replay.split("|");
       document.querySelector('.tab[data-tab="inspect"]').click();
       $("replay-run").value = runId;
@@ -1074,6 +1114,8 @@ async function restoreRuns() {
   for (const run of r.data.slice().reverse()) Object.assign(S.testStatus, run.tests);
   S.run = r.data[0];
   S.runSelect = S.run.select;
+  const chaos = r.data.find((x) => x.select === "c1" && x.state === "done");
+  if (chaos) await loadChaosFinal(chaos.run_id);  // the last chaos run's numbers survive a reload
 }
 
 function restoreMode() {

@@ -175,36 +175,42 @@
   </main>
 
   <!-- TESTS ------------------------------------------------------------------->
-  <main id="tab-tests" class="tab-panel hidden">
-    <section class="panel tests-controls">
-      <div class="seg-group" role="group" aria-label="Test mode">
-        <span>Mode</span>
-        <button class="seg active" data-mode="fast" aria-pressed="true">Fast</button>
-        <button class="seg" data-mode="watch" aria-pressed="false">Watch</button>
+  <main id="tab-tests" class="tab-panel tests hidden">
+    <section class="panel runner" aria-label="Test runner">
+      <div class="runner-top">
+        <div class="runner-title">
+          <h2>Test runner</h2>
+          <p class="hint" id="run-state"></p>
+        </div>
+        <div class="runner-actions">
+          <div class="seg-group" role="group" aria-label="Test mode">
+            <span>Mode</span>
+            <button class="seg active" data-mode="fast" aria-pressed="true">Fast</button>
+            <button class="seg" data-mode="watch" aria-pressed="false">Watch</button>
+          </div>
+          <button id="btn-protection" class="protect">Dedup protection: ON</button>
+          <button id="btn-run-official" class="primary">Run official five</button>
+          <button id="btn-run-all">Run all</button>
+          <button id="btn-run-chaos">Chaos run</button>
+        </div>
       </div>
-      <button id="btn-protection" class="protect">Dedup protection: ON</button>
-      <button id="btn-run-official" class="primary">Run official five</button>
-      <button id="btn-run-all">Run all</button>
-      <button id="btn-run-chaos">Chaos run</button>
-      <span id="run-state" class="run-state"></span>
+      <div class="tiles four" id="test-summary"></div>
     </section>
+
     <section class="tests-grid">
-      <article class="panel">
-        <h2>Scenarios</h2>
-        <table class="tests-table" id="tests-table"></table>
-      </article>
+      <div id="tests-table" class="test-groups"></div>
       <div class="tests-side">
         <article class="panel">
-          <h2>Chaos run</h2>
-          <div class="counters" id="chaos-counters"></div>
+          <header class="panel-head"><h2>Chaos run</h2></header>
+          <div class="tiles" id="chaos-counters"></div>
           <p class="hint" id="chaos-note"></p>
         </article>
         <article class="panel">
-          <h2>Metrics <small>this world</small></h2>
+          <header class="panel-head"><h2>Metrics <small>this world</small></h2></header>
           <table class="kv" id="metrics"></table>
         </article>
         <article class="panel">
-          <h2>Test output</h2>
+          <header class="panel-head"><h2>Test output</h2></header>
           <pre id="run-output" class="output"></pre>
         </article>
       </div>
