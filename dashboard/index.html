@@ -218,25 +218,43 @@
   </main>
 
   <!-- INSPECT ----------------------------------------------------------------->
-  <main id="tab-inspect" class="tab-panel hidden">
-    <section class="panel">
-      <h2>Message inspector</h2>
-      <label>Task <select id="inspect-task"></select></label>
-      <p class="hint" id="inspect-note"></p>
-      <div class="three">
-        <div><h3>MCP-style (Agent A side)</h3><pre id="view-mcp" class="code"></pre></div>
-        <div><h3>Shared schema record</h3><pre id="view-shared" class="code"></pre></div>
-        <div><h3>A2A-style (Agent B side)</h3><pre id="view-a2a" class="code"></pre></div>
+  <main id="tab-inspect" class="tab-panel inspect hidden">
+    <section class="panel inspector" aria-label="Message inspector">
+      <header class="panel-head">
+        <h2>Message inspector</h2>
+        <label class="task-pick">Task <select id="inspect-task"></select></label>
+      </header>
+      <p class="callout" id="inspect-note">Pick a task to see it in all three forms.</p>
+      <div class="seg-group view-tabs" role="tablist" aria-label="Message form">
+        <button class="seg active" role="tab" data-view="mcp" aria-selected="true">MCP-style</button>
+        <button class="seg" role="tab" data-view="shared" aria-selected="false">Shared schema</button>
+        <button class="seg" role="tab" data-view="a2a" aria-selected="false">A2A-style</button>
       </div>
+      <div class="three">
+        <section class="view-col on" data-view="mcp">
+          <h3>MCP-style <small>Agent A side</small></h3>
+          <pre id="view-mcp" class="code"></pre>
+        </section>
+        <section class="view-col" data-view="shared">
+          <h3>Shared schema record <small>what the bridge stores</small></h3>
+          <pre id="view-shared" class="code"></pre>
+        </section>
+        <section class="view-col" data-view="a2a">
+          <h3>A2A-style <small>Agent B side</small></h3>
+          <pre id="view-a2a" class="code"></pre>
+        </section>
+      </div>
+      <p class="legend"><span class="swatch" aria-hidden="true"></span> Highlighted: the field that carries the lifecycle state in each form.</p>
     </section>
+
     <section class="inspect-grid">
-      <article class="panel">
-        <h2>Message flow</h2>
+      <article class="panel flow-panel">
+        <header class="panel-head"><h2>Message flow</h2></header>
         <div class="flow-head"><span>Agent A</span><span>Bridge</span><span>Agent B / B2</span><span>Actions</span></div>
         <div id="flow" class="flow"></div>
       </article>
-      <article class="panel">
-        <h2>Event log</h2>
+      <article class="panel log-panel">
+        <header class="panel-head"><h2>Event log</h2><span class="hint" id="ev-count"></span></header>
         <div class="filters">
           <select id="f-dialog" aria-label="Dialog"><option value="">all dialogs</option></select>
           <select id="f-task" aria-label="Task"><option value="">all tasks</option></select>
@@ -244,23 +262,24 @@
             <option value="">all groups</option>
             <option>lifecycle</option><option>protection</option><option>health</option><option>testing</option>
           </select>
-          <label><input type="checkbox" id="f-reject"> rejections only</label>
+          <label class="check"><input type="checkbox" id="f-reject"> rejections only</label>
         </div>
-        <div id="eventlog" class="eventlog"></div>
+        <div id="eventlog" class="eventlog" role="table" aria-label="Event log"></div>
       </article>
     </section>
-    <section class="panel">
-      <h2>Replay <small>step through a recorded test run</small></h2>
+
+    <section class="panel replay" aria-label="Replay">
+      <header class="panel-head"><h2>Replay <small>step through a recorded test run</small></h2></header>
       <div class="replay-controls">
         <select id="replay-run" aria-label="Run"></select>
         <select id="replay-test" aria-label="Test"></select>
         <button id="btn-replay-load">Load</button>
-        <button id="btn-replay-play">Play</button>
+        <button id="btn-replay-play" class="primary">Play</button>
         <input id="replay-slider" type="range" min="0" max="0" value="0" aria-label="Replay position">
-        <span id="replay-pos"></span>
+        <span id="replay-pos" class="mono"></span>
       </div>
       <div class="replay-grid">
-        <div id="replay-event" class="replay-event"></div>
+        <div id="replay-event" class="replay-event"><div class="empty"><b>No replay loaded</b><span>Pick a run and a test and press Load, or use “Replay in Inspect” in the Tests tab.</span></div></div>
         <div id="replay-tasks" class="replay-tasks"></div>
       </div>
     </section>

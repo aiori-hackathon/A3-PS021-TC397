@@ -220,8 +220,8 @@ body.protection-off::after {
 /* ==== 5. Tab panels (shared) =================================================== */
 .tab-panel { max-width: 1680px; margin: 0 auto; padding: var(--s5); display: flex; flex-direction: column; gap: var(--s4); }
 .tab-panel.enter { animation: fade var(--ease); }
-/* never starts fully transparent: a stalled animation must not be able to hide a tab */
-@keyframes fade { from { opacity: 0.55; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+/* slide only, never opacity: a stalled animation must not be able to dim or hide a tab */
+@keyframes fade { from { transform: translateY(4px); } to { transform: none; } }
 .panel {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--r-card);
   box-shadow: var(--shadow); padding: var(--s4); min-width: 0;
@@ -432,29 +432,72 @@ table.kv td:first-child { color: var(--slate); }
 table.kv td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; white-space: nowrap; }
 .output { max-height: 220px; overflow: auto; background: var(--fill); color: var(--ink); padding: var(--s3); border-radius: var(--r-input); margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 64px; }
 
-/* ==== 8. TEMPORARY: tab content styles, replaced tab by tab (steps b, c, d) ===== */
-.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); }
-pre.code { background: var(--fill); border: 1px solid var(--border); border-radius: var(--r-input); padding: var(--s2); max-height: 300px; overflow: auto; margin: 0; }
-.inspect-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s4); }
-.flow-head, .frow { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s1); }
-.flow-head { font-weight: 700; color: var(--slate); border-bottom: 1px solid var(--border); padding-bottom: 3px; }
-.flow { max-height: 380px; overflow-y: auto; }
-.frow { padding: 2px 0; border-bottom: 1px dotted var(--border); }
-.fcell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fcell.on { background: var(--blue-tint); border-radius: var(--r-tag); padding: 0 var(--s1); }
-.fcell.drop { background: var(--red-tint); color: var(--red); font-weight: 700; }
-.fcell.rej { background: var(--amber-tint); color: var(--amber); font-weight: 700; }
-.filters { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; margin-bottom: var(--s2); }
-.eventlog { max-height: 380px; overflow-y: auto; font-family: var(--mono); }
-.ev { display: grid; grid-template-columns: 50px 100px 200px 90px minmax(0, 1fr); gap: var(--s2); padding: 2px var(--s1); border-left: 4px solid transparent; }
-.ev.lifecycle { border-color: var(--blue); }
-.ev.protection { border-color: var(--red); background: var(--red-tint); }
-.ev.health { border-color: var(--amber); }
-.ev.testing { border-color: var(--grey); }
-.ev .data { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--slate); }
-.replay-controls { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+/* ==== 8. Inspect tab ============================================================ */
+.inspector { display: flex; flex-direction: column; gap: var(--s3); }
+.task-pick { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.task-pick select { max-width: 520px; min-width: 0; }
+.callout { background: var(--blue-tint); color: var(--blue); border-radius: var(--r-input); padding: var(--s3) var(--s4); font-weight: 550; }
+.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); }
+.view-col { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.view-tabs { display: none; align-self: flex-start; }
+pre.code { background: var(--fill); border: 1px solid var(--border); border-radius: var(--r-input); padding: var(--s3); max-height: 340px; min-height: 120px; overflow: auto; margin: 0; font-size: var(--fs-body); line-height: 1.5; white-space: pre; }
+.jk { color: var(--blue); }
+.js { color: var(--green); }
+.jn { color: var(--amber); }
+.jb { color: var(--ink); font-weight: 700; }
+.jp { color: var(--slate); }
+.jl.map { background: var(--amber-tint); border-radius: var(--r-tag); box-shadow: 0 0 0 2px var(--amber-tint), 0 0 0 3px var(--amber); }
+.legend { color: var(--slate); display: flex; align-items: center; gap: var(--s2); }
+.swatch { width: 18px; height: 12px; border-radius: 4px; background: var(--amber-tint); box-shadow: 0 0 0 2px var(--amber-tint), 0 0 0 3px var(--amber); flex: none; margin: 0 var(--s1); }
+
+.inspect-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); align-items: start; }
+.flow-panel, .log-panel { display: flex; flex-direction: column; gap: var(--s2); }
+.flow-head, .frow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
+.flow-head { font-size: var(--fs-label); font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; color: var(--slate); border-bottom: 1px solid var(--border); padding-bottom: var(--s2); }
+.flow-head > span, .frow > .fcell { padding: 0 var(--s2); }
+.flow { max-height: 420px; overflow-y: auto; }
+.frow { min-height: 40px; align-items: center; }
+.frow > .fcell { border-left: 1px dashed var(--border-strong); min-height: 40px; display: flex; align-items: center; min-width: 0; }
+.frow > .fcell:first-child { border-left: 0; }
+.fcell > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: var(--r-pill); padding: 2px var(--s3); }
+.fcell.on > span { background: var(--blue-tint); color: var(--blue); }
+.fcell.drop > span { background: var(--red-tint); color: var(--red); font-weight: 700; }
+.fcell.rej > span { background: var(--amber-tint); color: var(--amber); font-weight: 700; }
+.fcell:not(.on):not(.drop):not(.rej) > span { color: var(--slate); }
+
+.filters { display: flex; flex-wrap: nowrap; gap: var(--s2); align-items: center; }
+.filters select { min-width: 0; flex: 1 1 0; max-width: 260px; }
+.check { display: inline-flex; align-items: center; gap: var(--s2); white-space: nowrap; }
+.eventlog { max-height: 420px; overflow: auto; font-family: var(--mono); position: relative; }
+.ev-grid { display: grid; grid-template-columns: 56px 104px 190px 92px 112px minmax(0, 1fr); gap: var(--s3); align-items: center; }
+.ev-head { position: sticky; top: 0; z-index: 2; background: var(--card); padding: var(--s2) var(--s2); border-bottom: 1px solid var(--border-strong); font-family: var(--font); font-size: var(--fs-label); font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; color: var(--slate); }
+.ev { min-height: 40px; padding: var(--s1) var(--s2); border-left: 4px solid transparent; border-bottom: 1px solid var(--border); cursor: pointer; transition: background var(--ease); }
+.ev:hover { background: var(--fill); }
+.ev > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev .c-data { color: var(--slate); }
+.ev.lifecycle { border-left-color: var(--blue); }
+.ev.protection { border-left-color: var(--red); background: var(--red-tint); }
+.ev.health { border-left-color: var(--amber); }
+.ev.testing { border-left-color: var(--grey); }
+.ev.open { background: var(--fill); }
+.ev .ev-full { grid-column: 1 / -1; margin: var(--s1) 0 var(--s2); white-space: pre; overflow: auto; background: var(--card); border: 1px solid var(--border); border-radius: var(--r-input); padding: var(--s3); font-family: var(--mono); cursor: text; }
+
+.replay { display: flex; flex-direction: column; gap: var(--s3); }
+.replay-controls { display: flex; gap: var(--s2) var(--s3); align-items: center; flex-wrap: wrap; }
 .replay-controls input[type="range"] { flex: 1; min-width: 200px; }
-.replay-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); margin-top: var(--s2); }
+.replay-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s4); align-items: start; }
+.replay-event h3, .replay-tasks h3 { margin-bottom: var(--s2); }
+.replay-event pre.code { max-height: 300px; }
+
+@media (min-width: 1500px) {
+  .inspect-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+}
+@media (max-width: 1099px) {
+  .view-tabs { display: inline-flex; }
+  .three { grid-template-columns: minmax(0, 1fr); }
+  .view-col:not(.on) { display: none; }
+  .replay-grid { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* ==== 9. Reduced motion ======================================================== */
 @media (prefers-reduced-motion: reduce) {

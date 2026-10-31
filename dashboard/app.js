@@ -13,7 +13,7 @@ const S = {
   selectedTask: "", mode: "fast",
   run: null, runSelect: null, testStatus: {}, results: [], chaos: null, chaosFinal: null,
   replay: { events: [], timer: null },
-  dlgSeen: new Set(), dlgOpen: new Set(),
+  dlgSeen: new Set(), dlgOpen: new Set(), evOpen: new Set(),
 };
 
 const REJECTIONS = new Set([
@@ -48,8 +48,30 @@ const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => (
   { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const short = (id) => (id ? String(id).slice(0, 10) + "…" : "");
-const json = (v) => esc(JSON.stringify(v, null, 2));
 const port = (name) => S.cfg.ports[name];
+
+// Plain-JS JSON highlighter. `marks` are dotted paths whose line gets the "lifecycle state" highlight.
+function renderJson(value, marks = [], path = "", depth = 0) {
+  const pad = "  ".repeat(depth), pad1 = "  ".repeat(depth + 1);
+  if (value === null) return '<span class="jb">null</span>';
+  if (typeof value === "string") return `<span class="js">"${esc(value)}"</span>`;
+  if (typeof value === "number") return `<span class="jn">${value}</span>`;
+  if (typeof value === "boolean") return `<span class="jb">${value}</span>`;
+  const comma = '<span class="jp">,</span>\n';
+  if (Array.isArray(value)) {
+    if (!value.length) return '<span class="jp">[]</span>';
+    return '<span class="jp">[</span>\n' +
+      value.map((v, i) => pad1 + renderJson(v, marks, path ? `${path}.${i}` : String(i), depth + 1)).join(comma) +
+      `\n${pad}<span class="jp">]</span>`;
+  }
+  const keys = Object.keys(value);
+  if (!keys.length) return '<span class="jp">{}</span>';
+  return '<span class="jp">{</span>\n' + keys.map((k) => {
+    const p = path ? `${path}.${k}` : k;
+    const line = `<span class="jk">"${esc(k)}"</span><span class="jp">: </span>${renderJson(value[k], marks, p, depth + 1)}`;
+    return pad1 + (marks.includes(p) ? `<span class="jl map" title="carries the lifecycle state in this form">${line}</span>` : line);
+  }).join(comma) + `\n${pad}<span class="jp">}</span>`;
+}
 
 function url(p, path) {
   return `${location.protocol}//${location.hostname}:${p}${path}`;
@@ -342,7 +364,7 @@ function protocolMessages(state, style) {
     const err = m.reply && m.reply.error;
     const label = `${m.op} ${rid || ""}${err ? " → " + (err.code || err.message) : ""}`;
     return `<details class="pmsg ${err ? "err" : ""}" data-key="${esc(m.ts + "|" + m.op)}"><summary>${esc(label)}</summary>` +
-      `<pre>${json({ request: req, reply: m.reply })}</pre></details>`;
+      `<pre>${renderJson({ request: req, reply: m.reply })}</pre></details>`;
   }).join("");
   return { html: html || '<p class="hint">No messages yet.</p>', count: list.length };
 }
@@ -774,14 +796,19 @@ function renderInspectOptions() {
   if (ft.dataset.html !== tOpts) { const v = ft.value; ft.innerHTML = tOpts; ft.dataset.html = tOpts; ft.value = v; }
 }
 
+const EMPTY_VIEW = '<span class="jp">No task selected yet. Send a task from the Live tab, then pick it above.</span>';
+
 async function renderInspector() {
   const id = S.selectedTask;
-  if (!id) return;
+  if (!id) {
+    for (const v of ["view-mcp", "view-shared", "view-a2a"]) $(v).innerHTML = EMPTY_VIEW;
+    return;
+  }
   const r = await api(port("bridge"), `/tasks/${encodeURIComponent(id)}/views`);
   if (!r.ok) return;
-  $("view-mcp").innerHTML = json(r.data.mcp_style);
-  $("view-shared").innerHTML = json(r.data.shared);
-  $("view-a2a").innerHTML = json(r.data.a2a_style);
+  $("view-mcp").innerHTML = renderJson(r.data.mcp_style, ["structuredContent.state"]);
+  $("view-shared").innerHTML = renderJson(r.data.shared, ["state"]);
+  $("view-a2a").innerHTML = renderJson(r.data.a2a_style, ["status.state", "metadata.bridge_state"]);
   const st = r.data.shared.state;
   $("inspect-note").textContent = st === "SUSPENDED"
     ? "SUSPENDED has no A2A-style equivalent: status.state shows \"working\" and the exact state travels in metadata.bridge_state."
@@ -795,12 +822,26 @@ function filteredEvents() {
 }
 
 function renderEventLog() {
-  const list = filteredEvents().slice(-300).reverse();
-  $("eventlog").innerHTML = list.map((e) =>
-    `<div class="ev ${groupOf(e.type)}"><span>${e.seq}</span><span>${esc(hhmmss(e.ts))}</span>` +
-    `<span>${esc(e.type)}</span><span>${esc(e.actor)}</span>` +
-    `<span class="data" title="${esc(JSON.stringify(e.data))}">${esc(short(e.task_id))} ${esc(JSON.stringify(e.data))}</span></div>`).join("") ||
-    '<p class="hint">No events match.</p>';
+  const all = filteredEvents();
+  const list = all.slice(-300).reverse();
+  const head = '<div class="ev-grid ev-head" role="row"><span>Seq</span><span>Time</span><span>Type</span><span>Actor</span><span>Task</span><span>Data</span></div>';
+  const rows = list.map((e) => {
+    const open = S.evOpen.has(e.seq);
+    const full = open ? `<pre class="ev-full">${renderJson({ seq: e.seq, ts: e.ts, type: e.type, actor: e.actor, dialog_id: e.dialog_id, task_id: e.task_id, data: e.data })}</pre>` : "";
+    return `<div class="ev ev-grid ${groupOf(e.type)}${open ? " open" : ""}" data-seq="${e.seq}" tabindex="0" role="row" aria-expanded="${open}">` +
+      `<span>${e.seq}</span><span>${esc(hhmmss(e.ts))}</span><span>${esc(e.type)}</span><span>${esc(e.actor)}</span>` +
+      `<span title="${esc(e.task_id || "")}">${esc(short(e.task_id))}</span>` +
+      `<span class="c-data" title="${esc(JSON.stringify(e.data))}">${esc(JSON.stringify(e.data))}</span>${full}</div>`;
+  }).join("");
+  const html = head + (rows || '<div class="empty"><b>No events match</b><span>Clear a filter, or send a task to create some.</span></div>');
+  const el = $("eventlog");
+  if (el.dataset.html !== html) {
+    const top = el.scrollTop;
+    el.innerHTML = html;
+    el.dataset.html = html;
+    el.scrollTop = top;
+  }
+  $("ev-count").textContent = `${all.length} event${all.length === 1 ? "" : "s"}${all.length > 300 ? " (latest 300 shown)" : ""}`;
 }
 
 function lane(actor) {
@@ -842,7 +883,7 @@ function flowRow(e) {
     if (l !== 1) cells[1] = `#${e.seq}`;
   }
   return `<div class="frow" title="#${e.seq} ${esc(e.type)} ${esc(e.actor)}">` +
-    cells.map((c, i) => `<span class="fcell ${cls[i]}">${esc(c)}</span>`).join("") + "</div>";
+    cells.map((c, i) => `<span class="fcell ${cls[i]}">${c ? `<span title="${esc(c)}">${esc(c)}</span>` : ""}</span>`).join("") + "</div>";
 }
 
 function renderFlow() {
@@ -886,7 +927,7 @@ function renderReplay() {
   if (!evs.length) { $("replay-pos").textContent = ""; return; }
   const e = evs[k];
   $("replay-pos").textContent = `event ${k + 1} of ${evs.length} · seq ${e.seq}`;
-  $("replay-event").innerHTML = `<h3>${esc(e.type)} · ${esc(e.actor)} · ${esc(hhmmss(e.ts))}</h3><pre class="code">${json(e)}</pre>`;
+  $("replay-event").innerHTML = `<h3>${esc(e.type)} · ${esc(e.actor)} · ${esc(hhmmss(e.ts))}</h3><pre class="code">${renderJson(e)}</pre>`;
   const tasks = {};
   const effectKeys = new Set();
   let dupRejected = 0;
@@ -1087,6 +1128,26 @@ function bind() {
       $("replay-test").value = test;
       loadReplay(runId, test);
     }
+  });
+
+  for (const b of document.querySelectorAll(".view-tabs [data-view]")) {  // JSON views as tabs on narrow screens
+    b.addEventListener("click", () => {
+      for (const x of document.querySelectorAll(".view-tabs [data-view]")) {
+        x.classList.toggle("active", x === b);
+        x.setAttribute("aria-selected", x === b);
+      }
+      for (const col of document.querySelectorAll(".view-col")) col.classList.toggle("on", col.dataset.view === b.dataset.view);
+    });
+  }
+  const toggleEvent = (row) => {
+    if (!row) return;
+    const seq = Number(row.dataset.seq);
+    if (S.evOpen.has(seq)) S.evOpen.delete(seq); else S.evOpen.add(seq);
+    renderEventLog();
+  };
+  $("eventlog").addEventListener("click", (ev) => { if (!ev.target.closest(".ev-full")) toggleEvent(ev.target.closest(".ev")); });
+  $("eventlog").addEventListener("keydown", (ev) => {
+    if ((ev.key === "Enter" || ev.key === " ") && !ev.target.closest(".ev-full")) { ev.preventDefault(); toggleEvent(ev.target.closest(".ev")); }
   });
 
   $("inspect-task").addEventListener("change", (ev) => { S.selectedTask = ev.target.value; renderInspector(); });
