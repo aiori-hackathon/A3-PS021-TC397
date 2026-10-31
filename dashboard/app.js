@@ -14,6 +14,7 @@ const S = {
   run: null, runSelect: null, testStatus: {}, results: [], chaos: null, chaosFinal: null,
   replay: { events: [], timer: null },
   dlgSeen: new Set(), dlgOpen: new Set(), evOpen: new Set(),
+  err: { bridge: false, actions: false, agentA: false, supervisor: false },
 };
 
 const REJECTIONS = new Set([
@@ -144,6 +145,7 @@ function addEvent(e) {
   }
   if (e.type === "bridge_started" && S.restartedFrom) {
     banner(`Bridge restarted — recovered ${e.data.recovered_tasks} task(s); event numbers continue at ${e.seq}`, true);
+    toast(`Bridge restarted: recovered ${e.data.recovered_tasks} task${e.data.recovered_tasks === 1 ? "" : "s"}`);
     S.restartedFrom = null;
     setTimeout(() => banner(""), 9000);
   }
@@ -196,6 +198,7 @@ async function poll() {
       api(port("agent_a"), "/chat"), api(port("agent_a"), "/state"), api(port("agent_b"), "/state"),
     ]);
   S.supervisorUp = st.ok;
+  S.err = { supervisor: !st.ok, bridge: !(tasks.ok && dialogs.ok), actions: !ledger.ok, agentA: !chat.ok };
   if (st.ok) {
     for (const [name, p] of Object.entries(st.data)) {
       if (p.status === "crashed" && !S.crashedAt[name]) S.crashedAt[name] = new Date();
@@ -681,6 +684,7 @@ function renderTests() {
     ? `${run.state === "running" ? "Running" : "Finished"} ${run.select} (${run.mode}${run.protection ? "" : ", protection OFF"})` +
       (run.state === "done" ? ` · exit ${run.exit_code}` : "")
     : "No tests run yet. Start with “Run official five”.";
+  if (!S.supervisorUp) $("run-state").textContent = "The supervisor is not reachable, so tests cannot be started or refreshed.";
   if (run && run.output) {
     const out = $("run-output");
     out.textContent = run.output.join("\n");
@@ -689,7 +693,7 @@ function renderTests() {
     $("run-output").textContent = "Output appears here while tests run.";
   }
   for (const b of document.querySelectorAll("[data-run], #btn-run-official, #btn-run-all, #btn-run-chaos")) {
-    b.disabled = !!(run && run.state === "running");
+    b.disabled = !!(run && run.state === "running") || !S.supervisorUp;
   }
 
   const m = S.metrics;
@@ -965,6 +969,9 @@ function render() {
   renderHeader();
   const tab = activeTab();
   if (tab === "live") {
+    $("chat-err").classList.toggle("hidden", !S.err.agentA);
+    $("ledger-err").classList.toggle("hidden", !S.err.actions);
+    $("dialogs-err").classList.toggle("hidden", !S.err.bridge);
     renderChat(); renderAgents(); renderLedger(); renderLinks(); renderDialogs();
   } else if (tab === "tests") {
     renderTests();
@@ -1194,10 +1201,30 @@ function trackStackHeight() {
   if (window.ResizeObserver) new ResizeObserver(set).observe(stack);
 }
 
+function fatal(message) {
+  // Nothing can work without the bridge's /config.json: say so plainly, with a retry.
+  for (const m of document.querySelectorAll(".tab-panel")) m.classList.add("hidden");
+  document.querySelector(".tabs").classList.add("hidden");  // nothing to switch to
+  const box = document.createElement("main");
+  box.className = "panel fatal";
+  box.setAttribute("role", "alert");
+  box.innerHTML = `<h2>Can't reach the Dialog Bridge</h2><p class="hint">${esc(message)}</p>` +
+    `<p class="hint">Start it with <code>python supervisor.py --mode demo</code>, then try again.</p>` +
+    `<button class="primary" id="btn-retry-load">Try again</button>`;
+  document.body.appendChild(box);
+  $("btn-retry-load").addEventListener("click", () => location.reload());
+}
+
 async function start() {
   trackStackHeight();
-  const r = await fetch("/config.json");
-  S.cfg = await r.json();
+  try {
+    const r = await fetch("/config.json");
+    if (!r.ok) throw new Error(`the bridge answered HTTP ${r.status}`);
+    S.cfg = await r.json();
+  } catch (e) {
+    fatal(`The dashboard could not load its configuration (${e.message || e}).`);
+    return;
+  }
   bind();
   restoreMode();
   connectWS();

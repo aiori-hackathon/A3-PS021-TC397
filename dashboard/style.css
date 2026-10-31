@@ -189,9 +189,11 @@ input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--ink); ve
 .svc.bad .svc-state { background: var(--red-tint); color: var(--red); }
 .pop-foot { margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--border); }
 
+.protection-banner {
   display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s5);
   background: var(--warn-bg); color: var(--warn-ink); border-bottom: 1px solid var(--warn-ink);
 }
+.protection-banner svg { flex: none; }
 .banner {
   display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s5); font-weight: 600;
   background: var(--amber-tint); color: var(--amber); border-bottom: 1px solid var(--border);
@@ -306,7 +308,7 @@ details[open] > summary::before { transform: rotate(45deg); }
 .agent-status { display: flex; flex-wrap: wrap; gap: 2px var(--s3); padding: 0 var(--s4); color: var(--slate); }
 .agent-status b { color: var(--ink); }
 .agent-card .msgs-wrap { padding: 0 var(--s4) var(--s1); margin-top: auto; }
-.agent-card .msgs-wrap > summary { min-height: 32px; }
+.agent-card .msgs-wrap > summary { min-height: var(--control-h); }
 .count { font-weight: 400; color: var(--slate); }
 .count:not(:empty)::before { content: "("; }
 .count:not(:empty)::after { content: ")"; }
@@ -314,7 +316,7 @@ details[open] > summary::before { transform: rotate(45deg); }
 .lease.low { color: var(--red); font-weight: 700; }
 .msgs { display: flex; flex-direction: column; gap: var(--s1); padding-bottom: var(--s2); }
 .pmsg { border: 1px solid var(--border); border-radius: var(--r-input); background: var(--card); }
-.pmsg summary { cursor: pointer; padding: var(--s1) var(--s2); font-family: var(--mono); overflow-wrap: anywhere; }
+.pmsg summary { cursor: pointer; padding: var(--s1) var(--s2); font-family: var(--mono); overflow-wrap: anywhere; min-height: var(--control-h); display: flex; align-items: center; }
 .pmsg pre { margin: 0; padding: var(--s2); max-height: 180px; overflow: auto; background: var(--fill); border-radius: 0 0 var(--r-input) var(--r-input); }
 .pmsg.err summary { color: var(--red); }
 
@@ -417,9 +419,9 @@ details[open] > summary::before { transform: rotate(45deg); }
 .status.RUNNING { background: var(--blue-tint); color: var(--blue); }
 .status.RUNNING::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.25; } }
-.test-row .run { min-height: 36px; padding: 0 var(--s3); }
+.test-row .run { min-height: var(--control-h); padding: 0 var(--s3); }
 .rowmenu { position: relative; }
-.rowmenu > summary { list-style: none; cursor: pointer; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; font-size: 20px; line-height: 1; color: var(--slate); transition: background var(--ease), color var(--ease); }
+.rowmenu > summary { list-style: none; cursor: pointer; width: var(--control-h); height: var(--control-h); display: grid; place-items: center; border-radius: 50%; font-size: 20px; line-height: 1; color: var(--slate); transition: background var(--ease), color var(--ease); }
 .rowmenu > summary:hover, .rowmenu[open] > summary { background: var(--fill); color: var(--ink); }
 .menu-pop { position: absolute; right: 0; top: 40px; z-index: 20; min-width: 190px; display: grid; gap: var(--s1); padding: var(--s2); background: var(--card); border: 1px solid var(--border); border-radius: var(--r-input); box-shadow: var(--shadow-hover); }
 .menu-pop a, .menu-pop button { display: flex; align-items: center; min-height: 40px; padding: 0 var(--s3); border: 0; border-radius: var(--r-tag); background: transparent; color: var(--ink); text-decoration: none; font-weight: 550; text-align: left; }
@@ -499,7 +501,21 @@ pre.code { background: var(--fill); border: 1px solid var(--border); border-radi
   .replay-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* ==== 9. Reduced motion ======================================================== */
+
+/* ==== 9. States: loading, errors ================================================ */
+.skeleton { display: grid; gap: var(--s2); padding: var(--s2) 0; width: 100%; }
+.skel { display: block; height: 14px; border-radius: var(--r-pill); width: 100%;
+  background: linear-gradient(90deg, var(--fill) 25%, rgba(11, 15, 20, 0.09) 50%, var(--fill) 75%); background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite; }
+.skel.w70 { width: 70%; }
+.skel.w50 { width: 50%; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.inline-error { background: var(--red-tint); color: var(--red); border-radius: var(--r-input); padding: var(--s2) var(--s3); font-weight: 600; }
+.inline-error::before { content: "! "; font-weight: 800; }
+.fatal { max-width: 640px; margin: var(--s6) auto; text-align: center; display: grid; gap: var(--s3); justify-items: center; }
+.fatal h2 { font-size: var(--fs-title); }
+
+/* ==== 10. Reduced motion ======================================================== */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }

@@ -111,7 +111,8 @@
 
     <section class="panel chat-panel" aria-label="Chat">
       <header class="panel-head"><h2>Chat <small>with Agent A</small></h2></header>
-      <div id="chat" class="chat" aria-live="polite"></div>
+      <p class="inline-error hidden" id="chat-err" role="alert">Agent A is not answering, so new messages cannot be sent until it is back. The chat below may be out of date.</p>
+      <div id="chat" class="chat" aria-live="polite"><div class="skeleton" aria-busy="true" aria-label="Loading"><span class="skel"></span><span class="skel w70"></span><span class="skel w50"></span></div></div>
       <form id="chat-form" class="chat-form">
         <input id="chat-input" type="text" autocomplete="off" aria-label="Message to Agent A"
                value="Pay ₹40 to the bakery and email the receipt to Rahul">
@@ -126,7 +127,7 @@
           <div class="agent-title"><h2>Agent A <small>orchestrator · MCP-style</small></h2></div>
           <span class="svc-state" id="a-badge">…</span>
         </header>
-        <div class="agent-status" id="a-status"></div>
+        <div class="agent-status" id="a-status"><div class="skeleton" aria-busy="true" aria-label="Loading"><span class="skel"></span><span class="skel w70"></span><span class="skel w50"></span></div></div>
         <details class="msgs-wrap">
           <summary>Messages · JSON-RPC <span class="count" id="a-count"></span></summary>
           <div class="msgs" id="a-msgs"></div>
@@ -138,7 +139,7 @@
           <div class="agent-title"><h2>Agent B <small>worker · A2A-style</small></h2></div>
           <span class="svc-state" id="b-badge">…</span>
         </header>
-        <div class="agent-status" id="b-status"></div>
+        <div class="agent-status" id="b-status"><div class="skeleton" aria-busy="true" aria-label="Loading"><span class="skel"></span><span class="skel w70"></span><span class="skel w50"></span></div></div>
         <details class="msgs-wrap">
           <summary>Messages · task/message <span class="count" id="b-count"></span></summary>
           <div class="msgs" id="b-msgs"></div>
@@ -149,6 +150,7 @@
     <aside class="right">
       <article class="panel ledger-panel">
         <header class="panel-head"><h2>Ledger</h2></header>
+        <p class="inline-error hidden" id="ledger-err" role="alert">The actions service is not answering. These counts may be out of date.</p>
         <div class="tiles" id="ledger-counters">
           <div class="tile wide bad hidden" id="t-dupfx"><span class="n">0</span><span class="l"></span></div>
           <div class="tile" id="t-pay"><span class="n">0</span><span class="l">payments made</span></div>
@@ -163,14 +165,15 @@
       </article>
       <article class="panel links-panel">
         <header class="panel-head"><h2>Links</h2></header>
-        <div id="links" class="links"></div>
+        <div id="links" class="links"><div class="skeleton" aria-busy="true" aria-label="Loading"><span class="skel"></span><span class="skel w70"></span><span class="skel w50"></span></div></div>
         <div id="rules" class="rules"></div>
       </article>
     </aside>
 
     <section class="panel dialogs-panel" aria-label="Dialogs and tasks">
       <header class="panel-head"><h2>Dialogs and tasks <small>click a task to inspect it</small></h2></header>
-      <div id="dialogs" class="dialogs"></div>
+      <p class="inline-error hidden" id="dialogs-err" role="alert">The bridge is not answering. The tasks below may be out of date.</p>
+      <div id="dialogs" class="dialogs"><div class="skeleton" aria-busy="true" aria-label="Loading"><span class="skel"></span><span class="skel w70"></span><span class="skel w50"></span></div></div>
     </section>
   </main>
 
