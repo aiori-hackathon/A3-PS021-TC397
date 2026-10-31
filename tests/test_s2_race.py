@@ -43,3 +43,10 @@ def test_s2_two_workers_race(world):
     assert done["fence"] == 1 and done["owner"] == winner["task"]["owner"]
     assert [e["type"] for e in events_of(world, task_id)].count("claimed") == 1
     assert world.actions.count(task_id=task_id, action="pay") == 1
+    world.record(
+        task_id_preserved=True,
+        side_effects=world.actions.count(task_id=task_id, action="pay"),
+        claims_refused=1,
+        winner=done["owner"],
+        duplicates_rejected={"claims": 1},
+    )

@@ -3,7 +3,15 @@
 import pytest
 
 from tests.helpers.assertions import assert_events_in_order
-from tests.helpers.scenario import PAY, checkpoint_counts, events_of, process_is, task_in
+from tests.helpers.scenario import (
+    PAY,
+    checkpoint_counts,
+    duplicates,
+    events_of,
+    process_is,
+    recovery_ms,
+    task_in,
+)
 
 
 @pytest.mark.official
@@ -36,3 +44,11 @@ def test_s3_crash_before_side_effect(world):
     counts = checkpoint_counts(world, task_id)
     assert counts[0] == 1 and counts[1] == 1  # parse and plan were not redone
     assert counts == dict.fromkeys(range(5), 1)
+    world.record(
+        task_id_preserved=after["task_id"] == before["task_id"],
+        side_effects=world.actions.count(task_id=task_id, action="pay"),
+        duplicates_rejected=duplicates(world),
+        recovery_ms=recovery_ms(world, task_id),
+        fence=after["fence"],
+        attempt=after["attempt"],
+    )

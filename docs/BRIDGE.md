@@ -39,6 +39,7 @@ Read-only and control routes for the dashboard, tests and supervisor (plain JSON
 | `GET /` | Serves the dashboard |
 | `GET /health` | `{"ok": true, "boot_id": ..., "last_seq": ...}` |
 | `GET /dialogs`, `GET /dialogs/{id}` | Dialogs with their tasks |
+| `GET /tasks?state=` | All tasks, shared-schema form (optionally one state) |
 | `GET /tasks/{id}` | One task, shared-schema form |
 | `GET /tasks/{id}/views` | The same task in shared, MCP-style and A2A-style form (inspector) |
 | `GET /events?since=N&task_id=&type=` | Event log, filterable |
@@ -47,7 +48,7 @@ Read-only and control routes for the dashboard, tests and supervisor (plain JSON
 | `POST /faults`, `GET /faults`, `DELETE /faults` | Fault rules |
 | `POST /annotate` | Adds a `test_step` event (watch-mode captions) |
 | `WS /ws` | Live event stream |
-| `POST /admin/export` | Writes events, tasks and metrics to a folder (test evidence) |
+| `POST /admin/export` | `{"path": "results/<run>/<test>"}`: writes events, tasks, dialogs and metrics there (test evidence); the path must be inside `results/` |
 
 FastAPI's automatic page at `/docs` lists all of these and lets you call them by hand.
 

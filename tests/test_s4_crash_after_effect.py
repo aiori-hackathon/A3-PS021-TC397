@@ -3,7 +3,7 @@
 
 import pytest
 
-from tests.helpers.scenario import PAY, events_of, process_is, task_in
+from tests.helpers.scenario import PAY, duplicates, events_of, process_is, recovery_ms, task_in
 
 
 @pytest.mark.official
@@ -35,3 +35,10 @@ def test_s4_crash_after_side_effect(world):
     assert "duplicate_rejected" in [e["type"] for e in events_of(world, task_id)]
     metrics = world.bridge.get("/metrics")
     assert metrics["duplicate_effects_rejected"] == 1
+    world.record(
+        task_id_preserved=done["task_id"] == task_id,
+        side_effects=world.actions.count(task_id=task_id, action="pay"),
+        duplicates_rejected=duplicates(world),
+        recovery_ms=recovery_ms(world, task_id),
+        same_receipt=done["effect"]["receipt_id"] == paid["receipt_id"],
+    )

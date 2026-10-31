@@ -65,3 +65,27 @@ def chat_has(world, kind: str, dialog_id: str, timeout: float = 10) -> dict[str,
         ),
         timeout=timeout,
     )
+
+
+def ms_between(start: str, end: str) -> float:
+    from datetime import datetime
+
+    return round(
+        (datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() * 1000, 1
+    )
+
+
+def recovery_ms(world, task_id: str) -> float | None:
+    """From the failing owner's last write to the task being resumed or reclaimed."""
+    events = events_of(world, task_id)
+    for i, e in enumerate(events):
+        if e["type"] in ("resumed", "reclaimed"):
+            owner = e["data"].get("previous_owner") or e["actor"]
+            before = [x for x in events[:i] if x["actor"] == owner]
+            return ms_between(before[-1]["ts"], e["ts"]) if before else None
+    return None
+
+
+def duplicates(world) -> dict[str, int]:
+    m = world.bridge.get("/metrics")
+    return {"requests": m["duplicate_requests"], "effects": m["duplicate_effects_rejected"]}

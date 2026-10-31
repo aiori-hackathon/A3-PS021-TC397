@@ -142,10 +142,12 @@ def dep_states(tx: Tx, task: sqlite3.Row) -> list[str]:
 # --- dialog.create / task.confirm / task.cancel --------------------------------------
 
 
-def create_dialog(tx: Tx, env: Envelope, max_attempts: int) -> dict[str, Any]:
+def create_dialog(
+    tx: Tx, env: Envelope, max_attempts: int, disable_dedup: bool = False
+) -> dict[str, Any]:
     p = DialogCreatePayload.model_validate(env.payload)
     taken = tx.one("SELECT dialog_id FROM dialogs WHERE msg_id = ?", (p.msg_id,))
-    if taken:
+    if taken and not disable_dedup:
         raise BridgeError(
             "validation_error",
             f"msg_id {p.msg_id} already started dialog {taken['dialog_id']}",

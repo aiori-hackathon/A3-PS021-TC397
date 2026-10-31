@@ -48,7 +48,11 @@ state = State()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     HUB.bind(asyncio.get_running_loop())
-    state.db = Database(SETTINGS.data_dir / "bridge.db", on_commit=HUB.notify)
+    state.db = Database(
+        SETTINGS.data_dir / "bridge.db", on_commit=HUB.notify, disable_dedup=SETTINGS.disable_dedup
+    )
+    if SETTINGS.disable_dedup:
+        log.warning("DISABLE_DEDUP=1: dedup protection is OFF (testing only)")
     if not state.db.integrity_ok():
         raise RuntimeError(f"integrity check failed for {state.db.path}")
     state.bridge = Bridge(SETTINGS, state.db)
@@ -241,6 +245,19 @@ def _task(task_id: str) -> dict[str, Any]:
     return record
 
 
+def _all_tasks(tx, state_filter: str | None = None) -> list[dict[str, Any]]:
+    sql, params = "SELECT * FROM tasks", []
+    if state_filter:
+        sql += " WHERE state = ?"
+        params.append(state_filter)
+    return [tasks.record(tx, r) for r in tx.all(sql + " ORDER BY rowid", params)]
+
+
+@app.get("/tasks")
+def list_tasks(state: str | None = None) -> list[dict[str, Any]]:
+    return _read(_all_tasks, state)
+
+
 @app.get("/tasks/{task_id}")
 def get_task(task_id: str) -> dict[str, Any]:
     return _task(task_id)
@@ -276,6 +293,38 @@ def list_agents() -> list[dict[str, Any]]:
 @app.get("/metrics")
 def get_metrics() -> dict[str, Any]:
     return _read(metrics.compute)
+
+
+class Export(BaseModel):
+    path: str  # relative to the repository, inside results/
+
+
+RESULTS_DIR = config.ROOT / "results"
+
+
+@app.post("/admin/export")
+def admin_export(req: Export) -> dict[str, Any]:
+    """Write events, tasks, dialogs and metrics to a folder under results/ (test evidence)."""
+    target = (config.ROOT / req.path).resolve()
+    if not target.is_relative_to(RESULTS_DIR.resolve()):
+        raise HTTPException(400, "export path must be inside results/")
+    target.mkdir(parents=True, exist_ok=True)
+
+    def snapshot(tx):
+        dialogs = [
+            tasks.dialog_record(tx, r) for r in tx.all("SELECT * FROM dialogs ORDER BY rowid")
+        ]
+        return {
+            "events.json": events.since(tx, 0),
+            "tasks.json": _all_tasks(tx),
+            "dialogs.json": dialogs,
+            "metrics.json": metrics.compute(tx),
+        }
+
+    files = _read(snapshot)
+    for name, data in files.items():
+        (target / name).write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    return {"ok": True, "path": str(target.relative_to(config.ROOT)), "files": sorted(files)}
 
 
 class Annotation(BaseModel):

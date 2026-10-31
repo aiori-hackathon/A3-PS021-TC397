@@ -260,7 +260,8 @@ got stuck).
 
 ### M1 — Protection off (mutation check)
 - Run S1 and S4 with `DISABLE_DEDUP=1`:
-  `DISABLE_DEDUP=1 pytest -m mutation`.
+  `DISABLE_DEDUP=1 pytest -m mutation`. The tests also set it for their world
+  with `world_env`, so `pytest -m mutation` alone does the same.
 - **Expected:** both scenarios observe duplicates (S1: 2 dialogs or 2
   payments; S4: ledger count 2). The mutation test **passes when duplicates
   appear**, proving S1 and S4 would catch a broken dedup.
@@ -269,6 +270,16 @@ got stuck).
 ### C1 — Chaos run
 - 50 random messages from a fixed list; seed `CHAOS_SEED`; random fault rules
   on all links; random crash points; `AUTO_RESTART=1`; `AUTO_CONFIRM=1`.
+- Details: two workers (B and B2). Before each message, with set
+  probabilities: a random rule (drop_request, drop_reply, duplicate, a short
+  delay on agent_a / agent_b / agent_b2 / actions); a worker restarted with a
+  random crash point (the restart itself is also a mid-task kill); Agent A
+  restarted with `before_create` or `after_create`. When Agent A is down the
+  sender retries the same `msg_id`, as a user would. All choices come from
+  `random.Random(CHAOS_SEED)`; timing still varies between machines.
+- A task may end FAILED (retry limit after repeated crashes); that is a
+  correct terminal outcome, reported in the results, and its effect must still
+  have happened at most once.
 - **Wait:** every task terminal (timeout 300 s).
 - **Check:** for every `effect_key`, ledger count ≤ 1; every COMPLETED
   side-effect task has exactly 1 ledger row; no task stuck non-terminal.
@@ -310,6 +321,21 @@ results/<run_id>/<test_id>/
 `python scripts/build_results.py results/<run_id>` writes the tables into
 [RESULTS.md](RESULTS.md).
 
+How a run is put together:
+
+- `run_id` is `RUN_ID` from the environment, or a timestamp. Several pytest
+  invocations share one run by setting the same `RUN_ID`.
+- Every invocation writes `results/<run_id>/sessions/<time>-<pid>.json`: every
+  test's status (`PASS`, `FAIL`, `TIMEOUT`, `ERROR`, `SKIP`), duration and
+  markers. That is where unit tests, R1–R4 and stability counts come from.
+- Each `world` test also gets its folder (above, plus `dialogs.json`). Its
+  `summary.json` holds the key numbers the test recorded with
+  `world.record(...)`, for example `side_effects`, `recovery_ms`.
+- `python scripts/run_all.py [--stability 20]` runs the suite, M1, C1 and
+  (optionally) the stability check under one `RUN_ID`, then builds
+  RESULTS.md. CI runs it without `--stability`.
+- A missing input is shown as `NOT RUN`; nothing is filled in by hand.
+
 ## Flakiness check
 
 Before demo day:
@@ -335,7 +361,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: pip install -r requirements.txt
-      - run: TEST_MODE=fast pytest
+      - run: python scripts/run_all.py --run-id ci-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: results, path: results/ }

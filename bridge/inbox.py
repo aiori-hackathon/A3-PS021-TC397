@@ -30,8 +30,9 @@ def stored_reply(row: sqlite3.Row) -> Reply:
 
 
 def store(tx: Tx, env: Envelope, digest: str, reply: Reply) -> None:
+    # OR REPLACE only matters with DISABLE_DEDUP, when repeats are not looked up first.
     tx.execute(
-        "INSERT INTO inbox (request_id, body_hash, op, status_code, reply, created_at)"
+        "INSERT OR REPLACE INTO inbox (request_id, body_hash, op, status_code, reply, created_at)"
         " VALUES (?,?,?,?,?,?)",
         (env.request_id, digest, env.op, reply.status_code, dumps(reply.to_wire()), tx.ts),
     )

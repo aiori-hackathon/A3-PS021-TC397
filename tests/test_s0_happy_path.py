@@ -57,3 +57,8 @@ def test_s0_happy_path(world):
     assert metrics["tasks_completed"] == 2
     assert metrics["avg_task_ms"] is not None  # baseline for RESULTS.md
     assert metrics["duplicate_effects_rejected"] == 0
+    world.record(
+        avg_task_ms=metrics["avg_task_ms"],
+        events_per_task=round((len(e1) + len(e2)) / 2, 1),
+        side_effects=world.actions.count(),
+    )

@@ -141,7 +141,9 @@ Breaking any of these is outside the prototype's scope.
 ## Proving the protection is real
 
 `DISABLE_DEDUP=1` turns off layers 1 and 4 (inbox lookups and ledger key
-checks). With it set, S1 and S4 **must fail**, showing duplicate effects. This
+checks). One dialog per `msg_id` is also a dedup rule, so the bridge drops
+that too (the UNIQUE constraint and the reuse check); this applies only to a
+freshly wiped world. With it set, S1 and S4 **must fail**, showing duplicate effects. This
 is the mutation check M1 in [TESTING.md](TESTING.md) and the "protection
 on/off" switch on the dashboard. It is for testing only and is shown in a
 warning colour.

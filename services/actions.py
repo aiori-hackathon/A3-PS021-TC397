@@ -95,7 +95,8 @@ def ledger_row(row: sqlite3.Row) -> dict[str, Any]:
 
 
 class Ledger:
-    def __init__(self, path) -> None:
+    def __init__(self, path, disable_dedup: bool = False) -> None:
+        self.disable_dedup = disable_dedup
         path.parent.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
         self.conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
@@ -103,7 +104,8 @@ class Ledger:
         self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.execute("PRAGMA synchronous = FULL")
         self.conn.executescript(LEDGER_SQL)
-        self.conn.execute(KEY_INDEX_SQL)
+        if not disable_dedup:  # DISABLE_DEDUP (testing only): duplicates become extra rows
+            self.conn.execute(KEY_INDEX_SQL)
 
     def perform(self, req: ActionRequest) -> tuple[int, dict[str, Any]]:
         with self.lock:
@@ -141,7 +143,7 @@ class Ledger:
             "SELECT * FROM ledger WHERE idempotency_key = ? ORDER BY id LIMIT 1",
             (req.idempotency_key,),
         ).fetchone()
-        if row is not None:
+        if row is not None and not self.disable_dedup:
             log.info("replayed %s -> %s", req.idempotency_key, row["receipt_id"])
             return 200, receipt(row, replayed=True)
         receipt_id = f"rcp_{uuid.uuid4().hex[:12]}"
@@ -187,7 +189,9 @@ state = State()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    state.ledger = Ledger(SETTINGS.data_dir / "ledger.db")
+    state.ledger = Ledger(SETTINGS.data_dir / "ledger.db", SETTINGS.disable_dedup)
+    if SETTINGS.disable_dedup:
+        log.warning("DISABLE_DEDUP=1: idempotency key checks are OFF (testing only)")
     log.info("ledger at %s", SETTINGS.data_dir / "ledger.db")
     yield
 

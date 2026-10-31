@@ -119,7 +119,8 @@ class Bridge:
                     return exc.reply()
         with self.db.transaction() as tx:
             digest = inbox.body_hash(env)
-            stored = inbox.lookup(tx, env.request_id)
+            # DISABLE_DEDUP (testing only, mutation check M1): repeats are not recognised.
+            stored = None if self.db.disable_dedup else inbox.lookup(tx, env.request_id)
             if stored is not None:
                 return self._repeat(tx, env, stored, digest)
             try:
@@ -170,7 +171,7 @@ class Bridge:
         return {"leases": leases.heartbeat(tx, env, self.settings.lease_seconds)}
 
     def op_dialog_create(self, tx: Tx, env: Envelope, protocol: str) -> dict[str, Any]:
-        return tasks.create_dialog(tx, env, self.settings.max_attempts)
+        return tasks.create_dialog(tx, env, self.settings.max_attempts, self.db.disable_dedup)
 
     def op_dialog_get(self, tx: Tx, env: Envelope, protocol: str) -> dict[str, Any]:
         view = tasks.dialog_view(tx, env.dialog_id or "")

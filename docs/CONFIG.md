@@ -44,12 +44,13 @@ default column.
 | `OLLAMA_URL` | `http://localhost:11434` | LLM mode only |
 | `LLM_MODEL` | `qwen3.5:4b` | LLM mode only |
 | `LLM_TIMEOUT` | 8 | Seconds before falling back to rules |
-| `DISABLE_DEDUP` | `0` | **Testing only.** Turns off inbox lookups and ledger key checks |
+| `DISABLE_DEDUP` | `0` | **Testing only.** Turns off inbox lookups, one-dialog-per-`msg_id`, and ledger key checks |
 | `AUTO_RESTART` | `0` | Supervisor restarts crashed agents automatically |
 | `AUTO_RESTART_DELAY` | 2 | Seconds |
 | `CORS_ORIGINS` | `http://localhost:8000` | Origins allowed to call agents, actions and supervisor |
 | `TEST_MODE` | `fast` | For pytest: `fast` or `watch` |
 | `CHAOS_SEED` | `42` | Random seed for the chaos run |
+| `RUN_ID` | timestamp | Evidence folder name under `results/`; share it across pytest runs to build one RESULTS.md |
 
 ## Invariants to keep
 

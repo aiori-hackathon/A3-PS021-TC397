@@ -150,6 +150,7 @@ A3-PS021-TC397/
 ├── schema/dialog-state-0.1.json
 ├── tests/                   # see docs/TESTING.md
 ├── scripts/build_results.py # results/ -> docs/RESULTS.md tables
+├── scripts/run_all.py      # one evidence run (suite, M1, C1, stability) + RESULTS.md
 ├── supervisor.py
 ├── config.py               # env vars with per-mode defaults (docs/CONFIG.md)
 ├── requirements.txt

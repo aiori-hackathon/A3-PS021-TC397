@@ -2,7 +2,7 @@
 
 import pytest
 
-from tests.helpers.scenario import PAY, add_fault, task_in
+from tests.helpers.scenario import PAY, add_fault, duplicates, task_in
 
 
 @pytest.mark.official
@@ -30,11 +30,17 @@ def test_s1_lost_reply_sender_retries(world):
         e for e in world.bridge.events(type="fault_applied") if e["data"]["rule_id"] == rule["id"]
     ]
     assert len(applied) == 1
-    duplicates = [
+    create_repeats = [
         e
         for e in world.bridge.events(type="duplicate_request")
         if e["data"]["request_id"] == "s1:create"
     ]
-    assert len(duplicates) >= 1  # the retry got the stored reply
+    assert len(create_repeats) >= 1  # the retry got the stored reply
     assert world.actions.count(task_id=task_id, action="pay") == 1
     assert world.actions.count() == 1
+    world.record(
+        task_id_preserved=True,
+        dialogs_for_msg=len(dialogs),
+        side_effects=world.actions.count(task_id=task_id, action="pay"),
+        duplicates_rejected=duplicates(world),
+    )

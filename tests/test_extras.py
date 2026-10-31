@@ -35,6 +35,8 @@ def test_x1_uncertain_side_effect_outcome(world):
     assert "duplicate_rejected" in [e["type"] for e in events_of(world, task_id)]
     assert world.supervisor.state("agent_b") == "running"  # it retried, it did not crash
     assert done["fence"] == 1  # same owner throughout
+    effects = world.actions.count(task_id=task_id, action="pay")
+    world.record(side_effects=effects, key_number=f"effects: {effects}, receipt replayed")
 
 
 @pytest.mark.world_env(STEP_DELAY="0.5")
@@ -71,6 +73,10 @@ def test_x2_slow_not_dead_worker(world, settings):
         timeout=10,
     )
     assert world.actions.count(task_id=task_id, action="pay") == 1
+    blocked = len(
+        [e for e in events_of(world, task_id, "stale_fence_blocked") if e["actor"] == "agent_b"]
+    )
+    world.record(stale_writes_blocked=blocked, key_number=f"stale writes blocked: {blocked}")
 
 
 def test_x3_orchestrator_crash_after_create(world):
@@ -96,6 +102,8 @@ def test_x3_orchestrator_crash_after_create(world):
     for task_id in dialogs[0]["task_ids"]:
         task_in(world, task_id, "COMPLETED", timeout=10)
     assert world.actions.count(action="pay") == 1 and world.actions.count(action="send") == 1
+    created = len(dialogs[0]["task_ids"])
+    world.record(tasks_created=created, key_number=f"tasks created: {created}")
 
 
 def retry_limit_scenario(world, msg_id):
@@ -120,6 +128,7 @@ def test_x4_retry_limit(world):
     chat_has(world, "summary", plan["dialog_id"])
     outcomes = [m["text"] for m in world.agent_a.chat() if m["kind"] == "outcome"]
     assert any("failed" in text for text in outcomes)
+    world.record(attempts=failed["attempt"], key_number=f"attempts: {failed['attempt']}")
 
 
 @pytest.mark.world_env(AUTO_RESTART="1")
@@ -131,6 +140,8 @@ def test_x6_dependency_fails(world):
         e["data"]["to"] for e in events_of(world, mail["task_id"], "state_changed")
     ]
     assert failed["state"] == "FAILED" and mail["state"] == "CANCELLED"
+    claims = types.count("claimed")
+    world.record(dependent_claims=claims, key_number=f"dependent claims: {claims}")
 
 
 @pytest.mark.world_env(AUTO_CONFIRM="0")
@@ -156,6 +167,8 @@ def test_x5_cancel_before_side_effect(world):
     world.supervisor.restart("agent_b")
     task_in(world, paid_id, "COMPLETED")
     assert world.actions.count(task_id=paid_id, action="pay") == 1
+    rows = world.actions.count(task_id=task_id)
+    world.record(ledger_rows=rows, key_number=f"ledger rows: {rows}; committed cancel refused")
 
 
 def test_x7_duplicate_dispatch_to_worker(world):
@@ -182,3 +195,4 @@ def test_x7_duplicate_dispatch_to_worker(world):
     ]
     assert len(applied) == 1
     assert world.actions.count(task_id=task_id, action="pay") == 1
+    world.record(key_number="1 checkpoint row per step; duplicate absorbed")

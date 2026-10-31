@@ -2,7 +2,15 @@
 
 import pytest
 
-from tests.helpers.scenario import PAY, add_fault, chat_has, process_is, task_in
+from tests.helpers.scenario import (
+    PAY,
+    add_fault,
+    chat_has,
+    duplicates,
+    ms_between,
+    process_is,
+    task_in,
+)
 from tests.helpers.wait import wait_until
 
 
@@ -51,3 +59,13 @@ def test_s5_bridge_hard_kill_during_network_cut(world):
     chat_has(world, "summary", plan["dialog_id"], timeout=10)
     notices = [m for m in world.agent_a.chat() if m["kind"] == "notice"]
     assert any("Bridge restarted" in m["text"] for m in notices)
+    all_events = world.bridge.events()
+    before_restart = [e for e in all_events if e["seq"] < restart["seq"]]
+    world.record(
+        task_id_preserved=done["task_id"] == task_id,
+        side_effects=world.actions.count(task_id=task_id, action="pay"),
+        duplicates_rejected=duplicates(world),
+        recovery_ms=ms_between(before_restart[-1]["ts"], restart["ts"]),
+        seq_continued=restart["seq"] == restart["data"]["previous_last_seq"] + 1,
+        recovered_tasks=restart["data"]["recovered_tasks"],
+    )

@@ -22,7 +22,7 @@ from typing import Any
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS dialogs (
   dialog_id   TEXT PRIMARY KEY,
-  msg_id      TEXT NOT NULL UNIQUE,
+  msg_id      TEXT NOT NULL {msg_id_unique},
   text        TEXT NOT NULL,
   created_by  TEXT NOT NULL,
   created_at  TEXT NOT NULL
@@ -176,11 +176,13 @@ class Database:
         path: Path,
         on_commit: Callable[[list[dict[str, Any]]], None] | None = None,
         clock: Callable[[], float] = time.time,
+        disable_dedup: bool = False,
     ) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self.on_commit = on_commit
         self.clock = clock
+        self.disable_dedup = disable_dedup
         self.lock = threading.Lock()
         self.conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self.conn.row_factory = sqlite3.Row
@@ -188,7 +190,11 @@ class Database:
         self.conn.execute("PRAGMA synchronous = FULL")  # a commit survives a hard kill
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.execute("PRAGMA busy_timeout = 5000")
-        self.conn.executescript(SCHEMA_SQL)
+        # DISABLE_DEDUP (testing only): one dialog per user message is itself a dedup
+        # rule, so it goes too. Only ever applied to a freshly wiped world.
+        self.conn.executescript(
+            SCHEMA_SQL.replace("{msg_id_unique}", "" if disable_dedup else "UNIQUE")
+        )
 
     def integrity_ok(self) -> bool:
         with self.lock:
