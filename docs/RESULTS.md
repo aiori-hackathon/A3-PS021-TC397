@@ -5,21 +5,23 @@
 > traces back to an evidence folder (kept locally and as a CI artifact; the
 > `results/` folder itself is not committed).
 
-- Run ID: `2026-10-31_evidence`
-- Git commit: `60200c1`
+- Run ID: `m2-final`
+- Git commit: `1730452`
 - Python: `3.11.16` · OS: `Darwin 27.0.0 (arm64)`
 - Mode: fast · Seed: `42`
 - Schema: `dialog-state/0.1-experimental`
+
+**Main result.** Same 10 seeded fault campaigns (500 messages): **0** duplicate side effects with protection on, **52** with it off (22 of them payments). Details in section 6.
 
 ## 1. The five PS-021 disconnect/retry scenarios
 
 | ID | Scenario | Status | Task ID preserved | Side effects (expected 1) | Duplicates rejected | Recovery time | Evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| S1 | Lost reply, sender retries | PASS | yes | 1 | requests: 1, effects: 0 | — | `results/2026-10-31_evidence/s1` |
-| S2 | Two workers race | PASS | yes | 1 | claims: 1 | — | `results/2026-10-31_evidence/s2` |
-| S3 | Crash before side effect | PASS | yes | 1 | requests: 0, effects: 0 | 216 ms | `results/2026-10-31_evidence/s3` |
-| S4 | Crash after side effect, before report | PASS | yes | 1 | requests: 0, effects: 1 | 239 ms | `results/2026-10-31_evidence/s4` |
-| S5 | Bridge hard kill during network cut | PASS | yes | 1 | requests: 0, effects: 0 | 317 ms | `results/2026-10-31_evidence/s5` |
+| S1 | Lost reply, sender retries | PASS | yes | 1 | requests: 1, effects: 0 | — | `results/m2-final/s1` |
+| S2 | Two workers race | PASS | yes | 1 | claims: 1 | — | `results/m2-final/s2` |
+| S3 | Crash before side effect | PASS | yes | 1 | requests: 0, effects: 0 | 225 ms | `results/m2-final/s3` |
+| S4 | Crash after side effect, before report | PASS | yes | 1 | requests: 0, effects: 1 | 273 ms | `results/m2-final/s4` |
+| S5 | Bridge hard kill during network cut | PASS | yes | 1 | requests: 0, effects: 0 | 273 ms | `results/m2-final/s5` |
 
 Recovery time: from the failing worker's last write to the `resumed` event (S3, S4, includes the process restart); for S5, from the last event before the kill to `bridge_started`.
 
@@ -35,7 +37,7 @@ Recovery time: from the failing worker's last write to the `resumed` event (S3, 
 | --- | --- | --- | --- |
 | I1 | MCP-style round trip, all ops | PASS | 57/57 codec checks |
 | I2 | A2A-style round trip, all states | PASS | 61/61 codec checks; SUSPENDED carried in `metadata.bridge_state` |
-| I3 | Same dialog/task IDs across both views | PASS | `results/2026-10-31_evidence/i3` |
+| I3 | Same dialog/task IDs across both views | PASS | `results/m2-final/i3` |
 
 **Finding:** the A2A-style state set has no equivalent for SUSPENDED. The
 mapping is lossy by itself; the codec keeps it lossless through an extension
@@ -62,9 +64,9 @@ field.
 | R3 | Stale fence | 409 | PASS |
 | R4 | Reused request ID | 422 | PASS |
 
-Unit tests (router, state machine, codecs, models, faults): PASS, 361/361.
+Unit tests (router, state machine, codecs, models, faults): PASS, 374/374.
 
-## 6. Protection on vs off (mutation check M1)
+## 6. Protection on vs off (M1, M2)
 
 | Scenario | Protection ON | Protection OFF |
 | --- | --- | --- |
@@ -72,6 +74,36 @@ Unit tests (router, state machine, codecs, models, faults): PASS, 361/361.
 | S4 | 1 payment | 2 payments (PASS) |
 
 M1 passes when the duplicates appear with protection off: it proves S1 and S4 would catch broken dedup.
+
+### Seeded fault campaign, protection on vs off (M2)
+
+The C1 workload (random fault rules on every link, random crash points, two workers), run once per seed with protection on and once with `DISABLE_DEDUP=1`. The seed fixes which faults and crashes are armed and in what order, so both columns face the same campaign.
+
+| | Protection ON | Protection OFF |
+| --- | --- | --- |
+| Runs (seeds) | 10 (42–51), 50 messages each | 10 (same seeds and faults) |
+| Tasks created | 665 | 735 |
+| Fault rules set / process crashes | 192 / 60 | 192 / 61 |
+| **Duplicate side effects** | **0** | **52** |
+| of which payments (amount paid again) | 0 | 22 (₹800 + 10 with no amount) |
+| Same effect key performed twice | 0 | 27 |
+| Extra dialogs for one user message | 0 | 53 |
+| Tasks left unfinished | 0 | 29 |
+
+| Seed | ON: duplicates | OFF: duplicates | OFF: payments (amount paid again) | OFF: extra dialogs | OFF: unfinished tasks |
+| --- | --- | --- | --- | --- | --- |
+| 42 | 0 | 4 | 4 (₹80 + 2 with no amount) | 6 | 3 |
+| 43 | 0 | 2 | 1 (₹120) | 0 | 0 |
+| 44 | 0 | 5 | 3 (₹80 + 1 with no amount) | 7 | 4 |
+| 45 | 0 | 10 | 4 (₹40 + 3 with no amount) | 6 | 2 |
+| 46 | 0 | 5 | 1 (₹120) | 5 | 1 |
+| 47 | 0 | 4 | 1 (1 with no amount) | 6 | 3 |
+| 48 | 0 | 6 | 1 (₹40) | 4 | 3 |
+| 49 | 0 | 6 | 3 (₹40 + 2 with no amount) | 11 | 7 |
+| 50 | 0 | 4 | 1 (1 with no amount) | 5 | 5 |
+| 51 | 0 | 6 | 3 (₹280) | 3 | 1 |
+
+Status: PASS. A duplicate side effect is a ledger row beyond what the message's first dialog planned: the same effect key performed twice, or the work of a second dialog created for one message. Unfinished tasks with protection off belong to those extra dialogs: Agent A never learned of them, so nobody confirms them.
 
 ## 7. Chaos run (C1)
 
@@ -83,7 +115,7 @@ Status: PASS. Outcomes: 67 completed, 0 failed (retry limit), 0 cancelled. Actio
 
 ## 8. Stability
 
-`pytest -m "official or extra" --count=20`: 240/240.
+`pytest -m "official or extra" --count=20`: NOT RUN in this run.
 
 ## 9. What these results do and do not show
 
