@@ -1,0 +1,816 @@
+{
+  "$defs": {
+    "CancelPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "default": "user",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "title": "CancelPayload",
+      "type": "object"
+    },
+    "Checkpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "additionalProperties": true,
+          "title": "Output",
+          "type": "object"
+        },
+        "step": {
+          "title": "Step",
+          "type": "string"
+        },
+        "step_index": {
+          "title": "Step Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "step_index",
+        "step"
+      ],
+      "title": "Checkpoint",
+      "type": "object"
+    },
+    "CheckpointPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "additionalProperties": true,
+          "title": "Output",
+          "type": "object"
+        },
+        "step": {
+          "title": "Step",
+          "type": "string"
+        },
+        "step_index": {
+          "minimum": 0,
+          "title": "Step Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "step_index",
+        "step"
+      ],
+      "title": "CheckpointPayload",
+      "type": "object"
+    },
+    "CompletePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "result": {
+          "default": null,
+          "title": "Result"
+        }
+      },
+      "title": "CompletePayload",
+      "type": "object"
+    },
+    "Dialog": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "created_by": {
+          "title": "Created By",
+          "type": "string"
+        },
+        "dialog_id": {
+          "title": "Dialog Id",
+          "type": "string"
+        },
+        "msg_id": {
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Task Ids",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dialog_id",
+        "msg_id",
+        "text",
+        "created_by",
+        "task_ids",
+        "created_at"
+      ],
+      "title": "Dialog",
+      "type": "object"
+    },
+    "DialogCreatePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "msg_id": {
+          "minLength": 1,
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/$defs/TaskSpec"
+          },
+          "minItems": 1,
+          "title": "Tasks",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "msg_id",
+        "text",
+        "tasks"
+      ],
+      "title": "DialogCreatePayload",
+      "type": "object"
+    },
+    "Effect": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key"
+        },
+        "receipt_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Receipt Id"
+        },
+        "replayed": {
+          "default": false,
+          "title": "Replayed",
+          "type": "boolean"
+        },
+        "status": {
+          "default": "none",
+          "enum": [
+            "none",
+            "intent",
+            "committed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "title": "Effect",
+      "type": "object"
+    },
+    "EffectIntentPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "pay",
+            "send",
+            "reserve"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "effect_key": {
+          "title": "Effect Key",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        }
+      },
+      "required": [
+        "effect_key",
+        "action"
+      ],
+      "title": "EffectIntentPayload",
+      "type": "object"
+    },
+    "EffectResultPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "receipt_id": {
+          "title": "Receipt Id",
+          "type": "string"
+        },
+        "replayed": {
+          "default": false,
+          "title": "Replayed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "receipt_id"
+      ],
+      "title": "EffectResultPayload",
+      "type": "object"
+    },
+    "EmptyPayload": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "EmptyPayload",
+      "type": "object"
+    },
+    "Envelope": {
+      "additionalProperties": false,
+      "description": "Every request inside the bridge, after a codec has translated it.",
+      "properties": {
+        "dialog_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dialog Id"
+        },
+        "fence": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fence"
+        },
+        "op": {
+          "enum": [
+            "agent.register",
+            "agent.heartbeat",
+            "dialog.create",
+            "dialog.get",
+            "task.confirm",
+            "task.cancel",
+            "task.claim_next",
+            "task.claim",
+            "task.resume",
+            "task.checkpoint",
+            "task.effect_intent",
+            "task.effect_result",
+            "task.complete",
+            "task.fail",
+            "events.since"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Id"
+        },
+        "schema": {
+          "title": "Schema",
+          "type": "string"
+        },
+        "sender": {
+          "minLength": 1,
+          "title": "Sender",
+          "type": "string"
+        },
+        "sent_at": {
+          "title": "Sent At",
+          "type": "string"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        }
+      },
+      "required": [
+        "schema",
+        "sender",
+        "op",
+        "payload",
+        "sent_at"
+      ],
+      "title": "Envelope",
+      "type": "object"
+    },
+    "ErrorBody": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "schema_unsupported",
+            "validation_error",
+            "not_found",
+            "invalid_transition",
+            "not_owner",
+            "stale_fence",
+            "already_claimed",
+            "request_id_conflict",
+            "fault_injected"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ErrorBody",
+      "type": "object"
+    },
+    "Event": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "title": "Actor",
+          "type": "string"
+        },
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        },
+        "dialog_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dialog Id"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Task Id"
+        },
+        "ts": {
+          "title": "Ts",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "dialog_created",
+            "task_created",
+            "state_changed",
+            "confirmed",
+            "cancelled",
+            "claimed",
+            "resumed",
+            "checkpoint",
+            "effect_intent",
+            "effect_committed",
+            "completed",
+            "failed",
+            "duplicate_request",
+            "duplicate_rejected",
+            "stale_fence_blocked",
+            "invalid_transition_rejected",
+            "schema_rejected",
+            "request_id_conflict",
+            "agent_registered",
+            "agent_unresponsive",
+            "lease_expired",
+            "reclaimed",
+            "max_attempts_reached",
+            "bridge_started",
+            "fault_rule_set",
+            "fault_applied",
+            "test_step"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "dialog_id",
+        "task_id",
+        "type",
+        "actor"
+      ],
+      "title": "Event",
+      "type": "object"
+    },
+    "EventsSincePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "seq": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        }
+      },
+      "title": "EventsSincePayload",
+      "type": "object"
+    },
+    "FailPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "FailPayload",
+      "type": "object"
+    },
+    "HeartbeatPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Task Ids",
+          "type": "array"
+        }
+      },
+      "title": "HeartbeatPayload",
+      "type": "object"
+    },
+    "RegisterPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "base_url": {
+          "title": "Base Url",
+          "type": "string"
+        },
+        "protocol": {
+          "enum": [
+            "mcp-style",
+            "a2a-style"
+          ],
+          "title": "Protocol",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol",
+        "base_url"
+      ],
+      "title": "RegisterPayload",
+      "type": "object"
+    },
+    "Reply": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorBody"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "event_seq": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Seq"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "result": {
+          "default": null,
+          "title": "Result"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "title": "Reply",
+      "type": "object"
+    },
+    "Task": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "enum": [
+                "pay",
+                "send",
+                "reserve"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Action"
+        },
+        "attempt": {
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "confirmed": {
+          "title": "Confirmed",
+          "type": "boolean"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "depends_on": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "dialog_id": {
+          "title": "Dialog Id",
+          "type": "string"
+        },
+        "effect": {
+          "$ref": "#/$defs/Effect"
+        },
+        "fence": {
+          "title": "Fence",
+          "type": "integer"
+        },
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        },
+        "intent": {
+          "title": "Intent",
+          "type": "string"
+        },
+        "last_checkpoint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Checkpoint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lease_until": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Until"
+        },
+        "max_attempts": {
+          "title": "Max Attempts",
+          "type": "integer"
+        },
+        "needs_confirmation": {
+          "title": "Needs Confirmation",
+          "type": "boolean"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Owner"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "result": {
+          "default": null,
+          "title": "Result"
+        },
+        "state": {
+          "enum": [
+            "CREATED",
+            "AWAITING_CONFIRMATION",
+            "DISPATCHED",
+            "IN_PROGRESS",
+            "EFFECT_PENDING",
+            "SUSPENDED",
+            "COMPLETED",
+            "FAILED",
+            "CANCELLED"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id",
+        "dialog_id",
+        "index",
+        "intent",
+        "action",
+        "params",
+        "steps",
+        "state",
+        "owner",
+        "lease_until",
+        "fence",
+        "attempt",
+        "max_attempts",
+        "depends_on",
+        "needs_confirmation",
+        "confirmed",
+        "effect",
+        "last_checkpoint",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "Task",
+      "type": "object"
+    },
+    "TaskSpec": {
+      "additionalProperties": false,
+      "description": "One task as Agent A asks for it in dialog.create.",
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "enum": [
+                "pay",
+                "send",
+                "reserve"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action"
+        },
+        "depends_on": {
+          "description": "1-based indexes of earlier tasks in the same dialog.create",
+          "items": {
+            "type": "integer"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "intent": {
+          "title": "Intent",
+          "type": "string"
+        },
+        "needs_confirmation": {
+          "default": false,
+          "title": "Needs Confirmation",
+          "type": "boolean"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "steps": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "intent",
+        "steps"
+      ],
+      "title": "TaskSpec",
+      "type": "object"
+    }
+  },
+  "description": "Experimental schema for the PS-021 Dialog Bridge prototype. Generated from bridge/models.py; do not edit by hand.",
+  "title": "dialog-state/0.1-experimental"
+}
