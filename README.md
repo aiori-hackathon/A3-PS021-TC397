@@ -5,7 +5,6 @@ Team repository for the AIORI-3 hackathon. Dialog correlation for multi-agent co
 ## Team Introduction Video
 
 YouTube: https://youtu.be/Sif5reYGPS4
-website: https://dialogspan.vercel.app/
 
 ## What this is
 
@@ -44,11 +43,4 @@ Evidence strength is how hard a rule fired. It is not a probability that a claim
 
 The workspace ships five transcripts: a Pune shipment, a refund window, a Thursday clinic, a payments incident, and booking HK-204. Paste supports two to four agents. Separate turns with a blank line.
 
-## Run
 
-```bash
-npm install
-npm run dev
-```
-
-The app listens on port 8080.
