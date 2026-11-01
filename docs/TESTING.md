@@ -32,6 +32,7 @@ router and state machine). If a test passes, the real system works.
 | U* | Unit | Router table, state machine table, guards | Fast checks, no servers |
 | M1 | Mutation | Protection off | With `DISABLE_DEDUP=1`, S1 and S4 **must fail** |
 | C1 | Chaos | Random faults, 50 tasks | All terminal; ≤ 1 effect per key |
+| M2 | Comparison | C1's campaign, protection on vs off, several seeds | ON: 0 duplicates in every run; OFF: duplicates appear |
 
 S1–S5 are the five disconnect/retry scenarios required by PS-021. Everything
 else is reported separately as additional tests.
@@ -76,7 +77,8 @@ tests/
 ├── test_interop.py               # I3
 ├── test_rules.py                 # R1–R4
 ├── test_mutation.py              # M1 (run separately)
-└── test_chaos.py                 # C1 (marked slow)
+├── test_chaos.py                 # C1 (marked slow)
+└── test_comparison.py            # M2 (marked compare)
 ```
 
 `pytest.ini`:
@@ -89,7 +91,8 @@ markers =
     extra: additional scenarios
     slow: chaos run
     mutation: protection-off check
-addopts = -m "not slow and not mutation"
+    compare: protection on vs off over the chaos workload (M2)
+addopts = -m "not slow and not mutation and not compare"
 ```
 
 ### Fixtures
@@ -286,6 +289,33 @@ got stuck).
   side-effect task has exactly 1 ledger row; no task stuck non-terminal.
 - **Report:** tasks, faults applied, crashes, duplicates rejected, duplicate
   effects (must be 0). Run with `pytest -m slow`.
+- The workload (`run_workload`) and the per-message scoring (`score`) live in
+  `tests/helpers/campaign.py`, shared with M2.
+
+### M2 — Protection on vs off (seeded campaign)
+- C1's workload, run for `COMPARE_RUNS` seeds (default 5, from `CHAOS_SEED`
+  up). Each seed runs twice in a freshly reset world: once with
+  `DISABLE_DEDUP=0`, once with `DISABLE_DEDUP=1`. The test sets this itself, so
+  run it **without** `DISABLE_DEDUP` in the environment: `pytest -m compare`.
+- The seed fixes which fault rules and crash points are armed and in what
+  order; no draw depends on how the system answered, so both settings face the
+  same campaign. Timing still varies, so the OFF numbers vary a little between
+  runs of the same seed.
+- **Scoring, per user message** (`score`): a message's plan is the action
+  tasks of its first dialog. Every ledger row beyond that plan, for the same
+  message and action, is a **duplicate side effect**: either the same effect key
+  performed twice, or the work of a second dialog created for one message (a
+  retried `dialog.create` with dedup off; its tasks have new IDs, so new keys).
+  Also counted: payments and the amount paid twice, keys performed twice, extra
+  dialogs, tasks left unfinished.
+- **Wait:** ON, every task terminal (300 s, as C1). OFF, at most 45 s: the extra
+  dialogs' tasks wait for a confirmation that never comes, because Agent A never
+  learned of those dialogs. They are reported as unfinished, not as an error.
+- **Check:** ON, every run settles with 0 duplicate side effects, 0 extra
+  dialogs and 0 unfinished tasks. OFF, the total of duplicate side effects and
+  extra dialogs is above 0, or the campaign could not tell the settings apart.
+- **Report:** both settings side by side and one row per seed, in RESULTS.md
+  section 6; the totals are also the one-line main result at the top.
 
 ## Modes
 
@@ -332,9 +362,10 @@ How a run is put together:
 - Each `world` test also gets its folder (above, plus `dialogs.json`). Its
   `summary.json` holds the key numbers the test recorded with
   `world.record(...)`, for example `side_effects`, `recovery_ms`.
-- `python scripts/run_all.py [--stability 20]` runs the suite, M1, C1 and
-  (optionally) the stability check under one `RUN_ID`, then builds
-  RESULTS.md. CI runs it without `--stability`.
+- `python scripts/run_all.py [--compare N] [--stability 20]` runs the suite,
+  M1, C1, M2 (N seeds, default 5; 0 skips it) and (optionally) the stability
+  check under one `RUN_ID`, then builds RESULTS.md. CI runs it without
+  `--stability`.
 - A missing input is shown as `NOT RUN`; nothing is filled in by hand.
 
 ## Flakiness check

@@ -65,6 +65,7 @@ TEST_MODE=fast pytest                   # main suite
 TEST_MODE=fast pytest -m "official"     # S1-S5 only
 DISABLE_DEDUP=1 pytest -m mutation      # M1
 pytest -m slow                          # C1 chaos
+pytest -m compare                       # M2 protection on vs off, several seeds
 python scripts/build_results.py results/<run_id>
 ```
 

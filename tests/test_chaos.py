@@ -11,10 +11,9 @@ the same faults in the same order (timing still varies between machines).
 import random
 from collections import Counter
 
-import httpx
 import pytest
 
-from tests.helpers.wait import wait_until
+from tests.helpers.campaign import TERMINAL, run_workload, wait_terminal
 
 pytestmark = [
     pytest.mark.slow,
@@ -23,109 +22,17 @@ pytestmark = [
 ]
 
 N_MESSAGES = 50
-TERMINAL = {"COMPLETED", "FAILED", "CANCELLED"}
-MESSAGES = [
-    "Pay ₹40 to the bakery and email the receipt to Rahul",
-    "pay ₹120 to the landlord",
-    "book a room for friday 5pm",
-    "find booking HK-204",
-    "send money to Asha",
-    "email the report to the team",
-    "reserve a table for tomorrow 7:30 pm then notify Rahul",
-    "check my payment history",
-    "write me a poem",
-    "buy two tickets and email the tickets to Asha",
-]
-WORKER_CRASHES = [
-    "before_pay",
-    "after_pay",
-    "after_pay_call",
-    "before_send",
-    "after_send_call",
-    "after_send",
-    "before_reserve",
-    "after_reserve_call",
-    "after_parse",
-    "before_verify",
-    "before_report",
-]
-ORCHESTRATOR_CRASHES = ["before_create", "after_create"]
-WORKER_OPS = ["task.checkpoint", "task.effect_intent", "task.effect_result", "task.complete"]
-
-
-def random_fault(rng: random.Random) -> tuple[str, dict]:
-    kind = rng.randrange(8)
-    if kind == 0:
-        return "bridge", {
-            "link": "agent_a",
-            "action": "drop_reply",
-            "match": {"op": "dialog.create"},
-        }
-    if kind == 1:
-        return "bridge", {"link": "agent_a", "action": "drop_request", "count": rng.randint(1, 3)}
-    if kind == 2:
-        link = rng.choice(["agent_b", "agent_b2"])
-        return "bridge", {"link": link, "action": "drop_reply", "count": rng.randint(1, 3)}
-    if kind == 3:
-        link = rng.choice(["agent_b", "agent_b2"])
-        return "bridge", {"link": link, "action": "drop_request", "count": rng.randint(1, 3)}
-    if kind == 4:
-        link = rng.choice(["agent_b", "agent_b2"])
-        return "bridge", {
-            "link": link,
-            "action": "duplicate",
-            "match": {"op": rng.choice(WORKER_OPS)},
-        }
-    if kind == 5:
-        link = rng.choice(["agent_b", "agent_b2"])
-        return "bridge", {"link": link, "action": "delay", "delay_ms": 300, "count": 3}
-    if kind == 6:
-        action = rng.choice(["pay", "send", "reserve"])
-        return "actions", {"link": "actions", "action": "drop_reply", "match": {"action": action}}
-    return "actions", {"link": "actions", "action": "drop_request", "count": rng.randint(1, 2)}
 
 
 def test_c1_chaos_run(world, settings):
     rng = random.Random(settings.chaos_seed)
-    world.supervisor.start("agent_b2")
-    targets = {"bridge": world.bridge, "actions": world.actions}
-    faults_set: Counter = Counter()
-    crashes_armed: Counter = Counter()
-
-    def send(msg_id: str, text: str) -> bool:
-        try:
-            world.agent_a.message(text, msg_id=msg_id)
-            return True
-        except httpx.HTTPError:  # Agent A is down (crash point): retry with the same msg_id
-            return False
-
-    for i in range(N_MESSAGES):
-        if rng.random() < 0.35:
-            where, rule = random_fault(rng)
-            rule["note"] = f"C1 #{i}"
-            targets[where].http.post("/faults", json=rule).raise_for_status()
-            faults_set[f"{where}:{rule['action']}"] += 1
-        if rng.random() < 0.12:
-            worker = rng.choice(["agent_b", "agent_b2"])
-            world.supervisor.restart(worker, env={"CRASH_AT": rng.choice(WORKER_CRASHES)})
-            crashes_armed[worker] += 1
-        if rng.random() < 0.05:
-            world.supervisor.restart("agent_a", env={"CRASH_AT": rng.choice(ORCHESTRATOR_CRASHES)})
-            crashes_armed["agent_a"] += 1
-        text = rng.choice(MESSAGES)
-        wait_until(lambda i=i, text=text: send(f"c{i}", text), timeout=30, every=0.2)
+    armed = run_workload(world, rng, N_MESSAGES)
+    faults_set, crashes_armed = armed["faults_set"], armed["crashes_armed"]
 
     world.caption("Waiting until every task is terminal")
-
-    def all_terminal():
-        dialogs = [d for d in world.bridge.get("/dialogs") if d["msg_id"].startswith("c")]
-        tasks = world.bridge.get("/tasks")
-        done = len({d["msg_id"] for d in dialogs}) == N_MESSAGES and all(
-            t["state"] in TERMINAL for t in tasks
-        )
-        return done and (dialogs, tasks)
-
-    dialogs, tasks = wait_until(all_terminal, timeout=300, every=1)
+    dialogs, tasks, settled = wait_terminal(world, N_MESSAGES, timeout=300)
+    if not settled:
+        raise TimeoutError("C1: not every task reached a terminal state within 300 s")
 
     ledger = world.actions.ledger()
     per_key = Counter(row["idempotency_key"] for row in ledger)

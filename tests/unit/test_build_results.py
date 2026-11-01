@@ -130,3 +130,63 @@ def test_recovery_skips_the_resume_transaction_itself():
     ]
     assert build_results.recovery_ms_from_events(ev) == 2500.0
     assert build_results.recovery_ms_from_events(ev[:1]) is None
+
+
+def m2_numbers():
+    def run(seed, setting, dups, pays, money, dialogs, stuck):
+        return {
+            "seed": seed,
+            "protection": setting,
+            "settled": stuck == 0,
+            "duplicate_side_effects": dups,
+            "duplicate_payments": pays,
+            "money_paid_twice": money,
+            "extra_dialogs": dialogs,
+            "stuck_tasks": stuck,
+        }
+
+    on = {"runs": 2, "messages": 100, "tasks": 130, "fault_rules_set": 30, "crashes": 9}
+    on |= {"duplicate_side_effects": 0, "duplicate_payments": 0, "money_paid_twice": 0}
+    on |= {"keys_performed_twice": 0, "extra_dialogs": 0, "stuck_tasks": 0, "failed": 0}
+    off = dict(on, tasks=141, crashes=8, duplicate_side_effects=7, duplicate_payments=5)
+    off |= {"money_paid_twice": 1600, "keys_performed_twice": 4, "extra_dialogs": 9}
+    off |= {"stuck_tasks": 3, "payments_without_amount": 1}
+    return {
+        "seeds": [42, 43, 44],
+        "messages_per_run": 50,
+        "on": on,
+        "off": off,
+        "runs": [
+            run(42, "on", 0, 0, 0, 0, 0),
+            run(42, "off", 4, 3, 1000, 6, 3),
+            run(43, "on", 0, 0, 0, 0, 0),
+            run(43, "off", 3, 2, 600, 3, 0),
+            run(44, "on", 0, 0, 0, 0, 0),
+            {**run(44, "off", 1, 1, 0, 0, 0), "payments_without_amount": 1},
+        ],
+    }
+
+
+def test_comparison_section_shows_both_settings_and_every_seed():
+    lines = build_results.comparison_lines(m2_numbers(), "PASS")
+    text = "\n".join(lines)
+    assert "| **Duplicate side effects** | **0** | **7** |" in text
+    assert "| of which payments (amount paid again) | 0 | 5 (₹1,600 + 1 with no amount) |" in text
+    assert "| Runs (seeds) | 2 (42–44), 50 messages each | 2 (same seeds and faults) |" in text
+    assert "| 42 | 0 | 4 | 3 (₹1,000) | 6 | 3 |" in text
+    assert "| 44 | 0 | 1 | 1 (1 with no amount) | 0 | 0 |" in text
+    assert "| 43 | 0 | 3 | 2 (₹600) | 3 | 0 |" in text
+    assert "Status: PASS" in text
+
+
+def test_comparison_section_when_not_run():
+    text = "\n".join(build_results.comparison_lines({}, build_results.NOT_RUN))
+    assert build_results.NOT_RUN in text and "| **Duplicate side effects**" not in text
+
+
+def test_headline_uses_the_comparison_when_present():
+    assert build_results.headline(m2_numbers()) == (
+        "Same 2 seeded fault campaigns (100 messages): **0** duplicate side effects with "
+        "protection on, **7** with it off (5 of them payments)."
+    )
+    assert build_results.headline({}) is None

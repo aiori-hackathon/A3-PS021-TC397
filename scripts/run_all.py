@@ -1,10 +1,13 @@
 """One full evidence run, then RESULTS.md. Every step shares one RUN_ID.
 
-    python scripts/run_all.py                 # suite + mutation + chaos
+    python scripts/run_all.py                 # suite + mutation + chaos + comparison (5 seeds)
+    python scripts/run_all.py --compare 10    # comparison over 10 seeds (~15 min)
     python scripts/run_all.py --stability 20  # plus official/extra 20 times (~17 min)
 
 Steps: TEST_MODE=fast pytest; DISABLE_DEDUP=1 pytest -m mutation; pytest -m slow;
-optionally pytest -m "official or extra" --count=N; then build_results.py.
+COMPARE_RUNS=N pytest -m compare (M2 sets protection on and off itself, so no
+DISABLE_DEDUP here); optionally pytest -m "official or extra" --count=N; then
+build_results.py.
 Exits non-zero if any step failed (RESULTS.md is still written, showing it).
 """
 
@@ -23,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--stability", type=int, default=0, help="repeat official+extra N times")
+    parser.add_argument("--compare", type=int, default=5, help="M2 seeds; 0 skips M2")
     parser.add_argument("--run-id", default=time.strftime("%Y-%m-%d_%H-%M-%S"))
     args = parser.parse_args()
     base = {**os.environ, "RUN_ID": args.run_id, "TEST_MODE": "fast"}
@@ -33,6 +37,8 @@ def main() -> int:
         ("mutation", [*pytest, "-m", "mutation"], {"DISABLE_DEDUP": "1"}),
         ("chaos", [*pytest, "-m", "slow"], {}),
     ]
+    if args.compare:
+        steps.append(("compare", [*pytest, "-m", "compare"], {"COMPARE_RUNS": str(args.compare)}))
     if args.stability:
         steps.append(
             ("stability", [*pytest, "-m", "official or extra", f"--count={args.stability}"], {})

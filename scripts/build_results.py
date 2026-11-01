@@ -126,6 +126,94 @@ def evidence(run: Run, test_id: str) -> str:
 # --- the document ---------------------------------------------------------------------
 
 
+def rupees(value: Any) -> str:
+    return f"₹{int(value or 0):,}"
+
+
+def payments(n: int, money: Any, unnamed: int) -> str:
+    """'22 (₹800 + 9 with no amount)': amounts only where the message named one."""
+    parts = [rupees(money)] if money or unnamed < n else []
+    if unnamed:
+        parts.append(f"{unnamed} with no amount")
+    return f"{n} ({' + '.join(parts)})" if parts else str(n)
+
+
+def headline(m2: dict[str, Any]) -> str | None:
+    """One-line main result from M2, or None when M2 did not run."""
+    if not m2:
+        return None
+    on, off = m2["on"], m2["off"]
+    return (
+        f"Same {on['runs']} seeded fault campaigns ({on['messages']} messages): "
+        f"**{on['duplicate_side_effects']}** duplicate side effects with protection on, "
+        f"**{off['duplicate_side_effects']}** with it off "
+        f"({off['duplicate_payments']} of them payments)."
+    )
+
+
+SEED_HEADER = (
+    "| Seed | ON: duplicates | OFF: duplicates | OFF: payments (amount paid again)"
+    " | OFF: extra dialogs | OFF: unfinished tasks |"
+)
+
+
+def comparison_lines(m2: dict[str, Any], status: str) -> list[str]:
+    """Section 6b: the seeded campaign run with protection on and off (M2)."""
+    out = ["### Seeded fault campaign, protection on vs off (M2)\n"]
+    if not m2:
+        return [*out, f"{NOT_RUN} in this run (`pytest -m compare`).\n"]
+    on, off, seeds = m2["on"], m2["off"], m2["seeds"]
+    seed_range = f"{seeds[0]}–{seeds[-1]}" if len(seeds) > 1 else str(seeds[0])
+    out.append(
+        "The C1 workload (random fault rules on every link, random crash points, two"
+        " workers), run once per seed with protection on and once with"
+        " `DISABLE_DEDUP=1`. The seed fixes which faults and crashes are armed and in"
+        " what order, so both columns face the same campaign.\n"
+    )
+
+    def row(label: str, key: str) -> str:
+        return f"| {label} | {on[key]} | {off[key]} |"
+
+    def paid(r: dict[str, Any]) -> str:
+        unnamed = r.get("payments_without_amount", 0)
+        return payments(r["duplicate_payments"], r["money_paid_twice"], unnamed)
+
+    runs_on = f"{on['runs']} ({seed_range}), {m2['messages_per_run']} messages each"
+    crashes_on = f"{on['fault_rules_set']} / {on['crashes']}"
+    crashes_off = f"{off['fault_rules_set']} / {off['crashes']}"
+    dups_on, dups_off = on["duplicate_side_effects"], off["duplicate_side_effects"]
+    out += [
+        "| | Protection ON | Protection OFF |",
+        "| --- | --- | --- |",
+        f"| Runs (seeds) | {runs_on} | {off['runs']} (same seeds and faults) |",
+        row("Tasks created", "tasks"),
+        f"| Fault rules set / process crashes | {crashes_on} | {crashes_off} |",
+        f"| **Duplicate side effects** | **{dups_on}** | **{dups_off}** |",
+        f"| of which payments (amount paid again) | {paid(on)} | {paid(off)} |",
+        row("Same effect key performed twice", "keys_performed_twice"),
+        row("Extra dialogs for one user message", "extra_dialogs"),
+        row("Tasks left unfinished", "stuck_tasks") + "\n",
+        SEED_HEADER,
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    by = {(r["seed"], r["protection"]): r for r in m2["runs"]}
+    for seed in seeds:
+        r_on, r_off = by[(seed, "on")], by[(seed, "off")]
+        out.append(
+            f"| {seed} | {r_on['duplicate_side_effects']} | {r_off['duplicate_side_effects']}"
+            f" | {paid(r_off)}"
+            f" | {r_off['extra_dialogs']} | {r_off['stuck_tasks']} |"
+        )
+    out.append(
+        f"\nStatus: {status}. A duplicate side effect is a ledger row beyond what the"
+        " message's first dialog planned: the same effect key performed twice, or the work"
+        " of a second dialog created for one message. Unfinished tasks with protection off"
+        " belong to those extra dialogs: Agent A never learned of them, so nobody confirms"
+        " them.\n"
+    )
+    return out
+
+
 def render(run: Run) -> str:
     out: list[str] = []
     w = out.append
@@ -142,6 +230,9 @@ def render(run: Run) -> str:
     w(f"- Python: `{run.meta('python')}` · OS: `{run.meta('os')}`")
     w(f"- Mode: {run.meta('test_mode')} · Seed: `{c1.get('seed', NOT_RUN)}`")
     w(f"- Schema: `{SCHEMA}`\n")
+    main_result = headline(run.numbers("m2"))
+    if main_result:
+        w(f"**Main result.** {main_result} Details in section 6.\n")
 
     w("## 1. The five PS-021 disconnect/retry scenarios\n")
     w(
@@ -241,7 +332,7 @@ def render(run: Run) -> str:
         f"\nUnit tests (router, state machine, codecs, models, faults): {unit[0]}, {unit[1]}/{unit[2]}.\n"
     )
 
-    w("## 6. Protection on vs off (mutation check M1)\n")
+    w("## 6. Protection on vs off (M1, M2)\n")
     w("| Scenario | Protection ON | Protection OFF |")
     w("| --- | --- | --- |")
     s1, s4 = run.numbers("s1"), run.numbers("s4")
@@ -259,6 +350,7 @@ def render(run: Run) -> str:
     w(
         "M1 passes when the duplicates appear with protection off: it proves S1 and S4 would catch broken dedup.\n"
     )
+    out.extend(comparison_lines(run.numbers("m2"), run.status("m2")))
 
     w("## 7. Chaos run (C1)\n")
     w(
