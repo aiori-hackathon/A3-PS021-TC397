@@ -28,11 +28,47 @@ INTENT_KEYWORDS: list[tuple[str, list[str]]] = [
             "summarise",
             "summarize",
             "show",
+            "track",
+            "balance",
+            "where is",
+            "how much",
         ],
     ),
-    ("payment", ["pay", "buy", "purchase", "transfer", "send money", "order"]),
-    ("message", ["email", "mail", "message", "notify", "text", "tell", "send"]),
-    ("booking", ["book", "reserve", "schedule", "appointment"]),
+    (
+        "payment",
+        [
+            "pay",
+            "buy",
+            "purchase",
+            "transfer",
+            "send money",
+            "order",
+            "tip",
+            "donate",
+            "wire",
+            "remit",
+            "recharge",
+            "settle",
+        ],
+    ),
+    (
+        "message",
+        [
+            "email",
+            "mail",
+            "message",
+            "notify",
+            "text",
+            "tell",
+            "send",
+            "whatsapp",
+            "sms",
+            "ping",
+            "inform",
+            "remind",
+        ],
+    ),
+    ("booking", ["book", "reserve", "schedule", "appointment", "rent", "hire", "meeting"]),
 ]
 
 
@@ -63,17 +99,41 @@ _BODY = re.compile(
     r"\b(?:email|mail|message|notify|text|tell|send)\s+(?:the\s+|a\s+|an\s+)?(.+?)\s+to\b",
     re.IGNORECASE,
 )
-_RECIPIENT = re.compile(
-    r"\b(?:notify|tell|text|message|email|mail)\s+(?:the\s+)?([\w\- ]+?)(?=$|\s+about\b|\s+that\b|,)",
-    re.IGNORECASE,
+_WHAT = re.compile(
+    r"\b(?:book|reserve|schedule|rent|hire)\s+(?:a\s+|an\s+|the\s+)?([\w\-]+)", re.IGNORECASE
 )
-_WHAT = re.compile(r"\b(?:book|reserve|schedule)\s+(?:a\s+|an\s+|the\s+)?([\w\-]+)", re.IGNORECASE)
 _DAY = re.compile(
     r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow)\b",
     re.IGNORECASE,
 )
 _TIME = re.compile(r"\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b", re.IGNORECASE)
 _REF = re.compile(r"\b([A-Za-z]{2}-\d{2,4})\b")
+# A bare number in a payment clause ("pay rahul 500"), once times and refs are removed.
+_BARE_AMOUNT = re.compile(r"(?<![\w.:])(\d+(?:\.\d+)?)(?![\w:])")
+# "pay rahul 500", "tip the driver 50": the payee right after the verb, when there is no "to".
+_PAYEE_AFTER_VERB = re.compile(
+    r"\b(?:pay|tip|donate|wire|remit|settle)\s+(?:the\s+|my\s+)?(?![₹\d])([A-Za-z][\w\-]*)",
+    re.IGNORECASE,
+)
+# "tell rahul i am late", "email Rahul the receipt": one-word recipient, then the body.
+_RECIPIENT_BODY = re.compile(
+    r"\b(?:notify|tell|text|message|email|mail|whatsapp|sms|ping|inform|send)\s+"
+    r"(?:the\s+)?([\w\-]+)(?:\s+(?:that|about)\b)?\s*(.*)$",
+    re.IGNORECASE,
+)
+_REMIND = re.compile(r"\bremind\s+([\w\-]+)\s+(?:to|about)\s+(.+)$", re.IGNORECASE)
+_LEADING_ARTICLE = re.compile(r"^(?:the|a|an)\s+", re.IGNORECASE)
+_MEETING = re.compile(r"\bmeeting\b", re.IGNORECASE)
+_HELP = re.compile(
+    r"^\s*(?:help|hi|hello|hey|menu|examples?|what can you do)\s*[?!.]*\s*$", re.IGNORECASE
+)
+HELP_TEXT = (
+    "I turn messages into tasks with simple keyword rules (scripted mode). Try: "
+    '"pay ₹40 to the bakery", "pay rahul 500", "tip the driver 50", '
+    '"email the receipt to Rahul", "tell rahul i am late", "whatsapp asha", '
+    '"book a room for friday 5pm", "rent a car for sunday", '
+    '"find booking HK-204", "what is my balance", or combine two with "and".'
+)
 
 NOTHING_SCHEDULED = "Nothing was scheduled."
 
@@ -125,6 +185,20 @@ def _first(pattern: re.Pattern[str], text: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
+def _message_params(clause: str) -> dict[str, str]:
+    remind = _REMIND.search(clause)
+    if remind:
+        return {"to": remind.group(1), "body": remind.group(2).strip()}
+    to = _first(_TO, clause)
+    if to:
+        return {"to": to, "body": _first(_BODY, clause) or clause}
+    m = _RECIPIENT_BODY.search(clause)
+    if not m:
+        return {"to": "unknown", "body": clause}
+    body = _LEADING_ARTICLE.sub("", m.group(2).strip())
+    return {"to": m.group(1), "body": body or clause}
+
+
 def extract_params(intent: str, clause: str) -> dict[str, Any]:
     params: dict[str, Any] = {}
     if intent == "payment":
@@ -133,15 +207,19 @@ def extract_params(intent: str, clause: str) -> dict[str, Any]:
             if m:
                 params["amount"] = _number(m.group(1))
                 break
+        else:
+            bare = _first(_BARE_AMOUNT, _REF.sub(" ", _TIME.sub(" ", clause)))
+            if bare:
+                params["amount"] = _number(bare)
         params["currency"] = "INR"
-        params["payee"] = _first(_TO, clause) or "unknown"
+        # "pay rahul 500" names the payee after the verb; "pay the bill" names none.
+        after_verb = _first(_PAYEE_AFTER_VERB, clause) if "amount" in params else None
+        params["payee"] = _first(_TO, clause) or after_verb or "unknown"
         params["item"] = _first(_ITEM, clause)
     elif intent == "message":
-        to = _first(_TO, clause)
-        params["to"] = to or _first(_RECIPIENT, clause) or "unknown"
-        params["body"] = (_first(_BODY, clause) if to else None) or clause
+        params.update(_message_params(clause))
     elif intent == "booking":
-        params["what"] = _first(_WHAT, clause)
+        params["what"] = _first(_WHAT, clause) or ("meeting" if _MEETING.search(clause) else None)
         params["day"] = (_first(_DAY, clause) or "").lower() or None
         params["time"] = (_first(_TIME, clause) or "").lower() or None
         ref = _first(_REF, clause)
@@ -169,6 +247,9 @@ def _cancel_command(clause: str) -> dict[str, Any] | None:
 
 def route(text: str) -> RouteResult:
     result = RouteResult()
+    if _HELP.match(normalise(text)):
+        result.reply = HELP_TEXT
+        return result
     negated = False
     for clause in split_clauses(normalise(text)):
         if _NEGATION.search(clause):

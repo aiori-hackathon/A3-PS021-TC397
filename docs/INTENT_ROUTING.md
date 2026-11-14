@@ -24,10 +24,10 @@ flowchart LR
 
 | Intent | Example text | Keywords (checked in this order) | Steps | Side effect |
 | --- | --- | --- | --- | --- |
-| `lookup` | "check my payment history", "find the HK-204 booking" | `history`, `status`, `find`, `search`, `look up`, `check`, `summarise`, `summarize`, `show` | parse → search → summarise → report | none |
-| `payment` | "pay ₹40 to the bakery", "buy two tickets" | `pay`, `buy`, `purchase`, `transfer`, `send money`, `order` | parse → plan → **pay** → verify → report | `pay` |
-| `message` | "email the receipt to Rahul", "notify the team" | `email`, `mail`, `message`, `notify`, `text`, `tell`, `send` | parse → draft → **send** → report | `send` |
-| `booking` | "book a room for Friday", "reserve a table" | `book`, `reserve`, `schedule`, `appointment` | parse → check_slot → **reserve** → report | `reserve` |
+| `lookup` | "check my payment history", "find the HK-204 booking", "what is my balance" | `history`, `status`, `find`, `search`, `look up`, `check`, `summarise`, `summarize`, `show`, `track`, `balance`, `where is`, `how much` | parse → search → summarise → report | none |
+| `payment` | "pay ₹40 to the bakery", "pay rahul 500", "tip the driver 50" | `pay`, `buy`, `purchase`, `transfer`, `send money`, `order`, `tip`, `donate`, `wire`, `remit`, `recharge`, `settle` | parse → plan → **pay** → verify → report | `pay` |
+| `message` | "email the receipt to Rahul", "tell rahul i am late", "remind me to call mom" | `email`, `mail`, `message`, `notify`, `text`, `tell`, `send`, `whatsapp`, `sms`, `ping`, `inform`, `remind` | parse → draft → **send** → report | `send` |
+| `booking` | "book a room for Friday", "rent a car for sunday", "set up a meeting" | `book`, `reserve`, `schedule`, `appointment`, `rent`, `hire`, `meeting` | parse → check_slot → **reserve** → report | `reserve` |
 | `general` | anything else | — | parse → plan → work → report | none |
 
 Order matters: `lookup` is checked first so "check my **payment** history" is a
@@ -58,9 +58,9 @@ Before keyword matching, check the clause for `don't`, `do not`, `never`,
 
 | Param | Pattern (simplified) | Default |
 | --- | --- | --- |
-| `amount` | `(?:₹|rs\.?|inr)\s*(\d+(?:\.\d+)?)` or `(\d+)\s*(?:rupees|rs|inr)` | none → payment asks for confirmation with amount "unspecified" |
+| `amount` | `(?:₹|rs\.?|inr)\s*(\d+(?:\.\d+)?)` or `(\d+)\s*(?:rupees|rs|inr)`; in a payment clause, otherwise a bare number that is not part of a time or a reference ("pay rahul 500") | none → payment asks for confirmation with amount "unspecified" |
 | `currency` | from the symbol | `INR` |
-| `payee` / `to` | `to (?:the )?([\w\- ]+?)(?:$| and| then| for| on|,)` | `"unknown"` |
+| `payee` / `to` | `to (?:the )?([\w\- ]+?)(?:$| and| then| for| on|,)`. Without `to`: the payee is the word after `pay`/`tip`/`donate`/`wire`/`remit`/`settle` when the clause has an amount ("tip the driver 50"); the recipient is the word after the message verb and the rest is the body ("tell rahul i am late"); `remind X to Y` → to X, body Y | `"unknown"` |
 | `item` | after `buy` / `order` | none |
 | `day` | `monday`…`sunday`, `today`, `tomorrow` | none |
 | `time` | `\d{1,2}(:\d{2})?\s*(am|pm)` | none |
@@ -85,6 +85,11 @@ route("Pay ₹40 to the bakery and email the receipt to Rahul").tasks
    "needs_confirmation": True, "depends_on": [1]},
 ]
 ```
+
+## Help
+
+`help`, `hi`, `hello`, `hey`, `menu`, `examples` or `what can you do` on their
+own create no task: `reply` lists example messages to try.
 
 `route()` returns a `RouteResult` with `tasks` (above), `matched`, `command`
 (a cancel command, if any) and `reply` (for example "Nothing was scheduled.").

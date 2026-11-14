@@ -182,3 +182,58 @@ def test_needs_confirmation_iff_side_effect():
 def test_route_is_deterministic():
     text = "Pay ₹40 to the bakery and email the receipt to Rahul"
     assert route(text) == route(text)
+
+
+# More keywords and better extraction, for playing with the demo chat.
+
+
+@pytest.mark.parametrize(
+    "text,intent,params",
+    [
+        ("email rahul", "message", {"to": "rahul"}),
+        ("email Rahul the receipt", "message", {"to": "Rahul", "body": "receipt"}),
+        ("tell rahul i am late", "message", {"to": "rahul", "body": "i am late"}),
+        ("send rahul a message", "message", {"to": "rahul"}),
+        ("whatsapp asha", "message", {"to": "asha"}),
+        ("sms mom that dinner is ready", "message", {"to": "mom", "body": "dinner is ready"}),
+        ("ping the team", "message", {"to": "team"}),
+        ("inform the landlord about the leak", "message", {"to": "landlord", "body": "leak"}),
+        ("remind me to call mom", "message", {"to": "me", "body": "call mom"}),
+        ("pay rahul 500", "payment", {"amount": 500, "payee": "rahul"}),
+        ("transfer 200 to asha", "payment", {"amount": 200, "payee": "asha"}),
+        ("tip the driver 50", "payment", {"amount": 50, "payee": "driver"}),
+        ("donate 100 to red cross", "payment", {"amount": 100, "payee": "red cross"}),
+        ("recharge my phone for 199", "payment", {"amount": 199}),
+        ("wire ₹2500 to the landlord", "payment", {"amount": 2500, "payee": "landlord"}),
+        ("rent a car for sunday", "booking", {"what": "car", "day": "sunday"}),
+        ("hire a cab for 6pm", "booking", {"what": "cab", "time": "6pm"}),
+        ("set up a meeting with Asha tomorrow", "booking", {"what": "meeting", "day": "tomorrow"}),
+        ("track my order", "lookup", {}),
+        ("what is my balance", "lookup", {}),
+        ("how much did I spend", "lookup", {}),
+    ],
+)
+def test_more_keywords(text, intent, params):
+    r = route(text)
+    assert intents(r) == [intent], (text, r.tasks)
+    got = r.tasks[0]["params"]
+    for key, value in params.items():
+        assert got.get(key) == value, (text, key, got)
+
+
+def test_amount_is_not_taken_from_a_time_or_reference():
+    params = route("pay the HK-204 deposit at 5pm").tasks[0]["params"]
+    assert "amount" not in params
+
+
+def test_two_new_keywords_in_one_message_make_two_tasks():
+    r = route("tip the driver 50 and whatsapp asha")
+    assert intents(r) == ["payment", "message"]
+    assert r.tasks[1]["depends_on"] == [1]
+
+
+@pytest.mark.parametrize("text", ["help", "hi", "Hello!", "what can you do?", "examples"])
+def test_help_replies_with_examples_and_schedules_nothing(text):
+    r = route(text)
+    assert r.tasks == [] and r.command is None
+    assert "pay ₹40 to the bakery" in r.reply
