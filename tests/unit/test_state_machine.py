@@ -195,3 +195,15 @@ def test_checkpoint_states():
 
 def test_effect_key_has_no_fence_or_attempt():
     assert sm.expected_effect_key("tsk_8c1f0a2b9e44", "pay") == "tsk_8c1f0a2b9e44:pay"
+
+
+@pytest.mark.parametrize("state", sorted(STATES))
+def test_only_a_suspended_task_can_be_held(state):
+    assert sm.can_hold(state) is (state == "SUSPENDED")
+
+
+def test_progress_summary():
+    steps = ["parse", "plan", "pay", "verify", "report"]
+    assert sm.progress_summary(steps, ["parse", "plan"]) == "step 3/5 (pay) next; done: parse, plan"
+    assert sm.progress_summary(steps, []) == "step 1/5 (parse) next; nothing done yet"
+    assert sm.progress_summary(steps, steps) == "all 5 steps done"

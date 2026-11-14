@@ -54,6 +54,7 @@ HTTP routes:
 | `POST /cancel` | `{ "task_id": "..." }` | `task.cancel` |
 | `GET /chat` | — | Chat transcript for the dashboard |
 | `POST /retry` | — | Resend the last state-changing request with the same `request_id` (dashboard button 4) |
+| `POST /decide` | `{ "task_id": "...", "choice": "continue" \| "pause" }` | The user's answer after a worker crash ([below](#crash-decision)): `continue` → `task.release`; `pause` keeps the hold |
 
 Flow for one message:
 
@@ -74,11 +75,31 @@ Flow for one message:
    confirm/cancel prompts for side-effect tasks.
 8. Follow the event stream; post a chat message when tasks complete, fail or
    are cancelled; post the final summary when the whole dialog is terminal.
-   Chat entries have a `kind` (`user`, `plan`, `notice`, `outcome`, `summary`)
+   Chat entries have a `kind` (`user`, `plan`, `notice`, `decision`, `outcome`, `summary`)
    and are keyed so that replaying the whole event log after a restart
    rebuilds the same view without duplicates.
 
 `AUTO_CONFIRM=1` (used by most tests) confirms side-effect tasks immediately.
+
+### Crash decision
+
+With `AUTO_CONFIRM=0` (the demo default), when a worker's lease expires and the
+task becomes SUSPENDED, Agent A does not let it resume on its own:
+
+1. It calls `task.hold` (`{task_id}:hold:{seq}`), so no worker, not even a
+   second one, can take the task.
+2. It posts a `decision` chat entry: who stopped, during which state, the
+   bridge's progress report ("step 3/5 (pay) next; done: parse, plan"), and the
+   question *Continue it now, or keep it paused?* Its `status` is `open`,
+   `paused`, `continued` or `closed`.
+3. `POST /decide` with `continue` calls `task.release`. The dashboard then
+   restarts the crashed worker, whose `task.resume` returns the task with its
+   progress report, and it continues from the next step. `pause` leaves the
+   task held.
+
+If the task was resumed, reclaimed or failed before Agent A could hold it, or
+`AUTO_CONFIRM=1`, it posts the plain notice instead and recovery is unattended,
+as before.
 
 ## Agent B (`adapters/agent_b.py`)
 

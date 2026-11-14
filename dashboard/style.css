@@ -239,7 +239,7 @@ body.protection-off::after {
   padding-top: var(--s4); padding-bottom: var(--s4);
 }
 .live > * { min-height: 0; }
-.control-panel { grid-area: ctl; display: flex; flex-direction: column; gap: var(--s3); overflow-y: auto; }
+.control-panel { grid-area: ctl; align-self: start; display: flex; flex-direction: column; gap: var(--s3); overflow-y: auto; }
 /* contain: size makes the chat's own content irrelevant to the row height: it takes the spare
    space on tall screens and scrolls inside on short ones. */
 .chat-panel { grid-area: chat; display: flex; flex-direction: column; gap: var(--s3); contain: size; min-height: 300px; }
@@ -271,7 +271,7 @@ body.protection-off::after {
 details[open] > summary::before { transform: rotate(45deg); }
 .more > summary:hover, .adv > summary:hover, .msgs-wrap > summary:hover, .receipts > summary:hover, .dlg > summary:hover { color: var(--ink); }
 .more-body, .adv-body { display: grid; gap: var(--s2); padding: var(--s1) 0 var(--s2); }
-.adv { margin-top: auto; border-top: 1px solid var(--border); padding-top: var(--s2); }
+.adv { border-top: 1px solid var(--border); padding-top: var(--s2); }
 .adv-body button.armed { background: var(--red-tint); border-color: var(--red); color: var(--red); }
 
 /* chat */
@@ -283,6 +283,8 @@ details[open] > summary::before { transform: rotate(45deg); }
 .msg.summary { align-self: stretch; max-width: none; background: var(--green-tint); color: var(--green); border-left: 4px solid var(--green); border-radius: var(--r-input); font-weight: 600; }
 .msg .who { display: block; font-size: var(--fs-label); font-weight: 700; margin-bottom: var(--s1); letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; }
 .msg .actions { margin-top: var(--s3); display: flex; gap: var(--s2); flex-wrap: wrap; }
+.msg.decision { align-self: stretch; max-width: none; background: var(--card); border: 1px solid var(--amber); border-left: 4px solid var(--amber); border-radius: var(--r-input); }
+.msg .decided { color: var(--slate); font-weight: 600; align-self: center; }
 .plan { display: grid; gap: var(--s2); white-space: normal; }
 .plan-head { font-weight: 600; }
 .plan-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); }

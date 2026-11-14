@@ -43,6 +43,8 @@ PAYLOADS = {
     "task.claim_next": {},
     "task.claim": {},
     "task.resume": {},
+    "task.hold": {},
+    "task.release": {},
     "task.checkpoint": {"step_index": 2, "step": "pay", "output": {"receipt_id": "rcp_51d0"}},
     "task.effect_intent": {"effect_key": f"{TID}:pay", "action": "pay", "params": {"amount": 40}},
     "task.effect_result": {"receipt_id": "rcp_51d0a8c2e911", "replayed": True},

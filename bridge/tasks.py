@@ -61,6 +61,8 @@ def record(tx: Tx, row: sqlite3.Row) -> dict[str, Any]:
         "depends_on": json.loads(row["depends_on"]),
         "needs_confirmation": bool(row["needs_confirmation"]),
         "confirmed": bool(row["confirmed"]),
+        # Only meaningful while SUSPENDED; any later state means the hold is over.
+        "held": bool(row["held"]) and row["state"] == "SUSPENDED",
         "effect": {
             "key": row["effect_key"],
             "status": row["effect_status"],
@@ -77,7 +79,9 @@ def record(tx: Tx, row: sqlite3.Row) -> dict[str, Any]:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
-    return Task.model_validate(task).model_dump(mode="json")
+    out = Task.model_validate(task).model_dump(mode="json")
+    out.pop("progress")  # only claim and resume replies carry it (handlers._with_progress)
+    return out
 
 
 def row(tx: Tx, task_id: str) -> sqlite3.Row | None:
@@ -213,6 +217,32 @@ def confirm(tx: Tx, env: Envelope) -> dict[str, Any]:
             (tx.ts, task["task_id"]),
         )
         tx.event("confirmed", env.sender, task["dialog_id"], task["task_id"])
+    return reload(tx, task["task_id"])
+
+
+def hold(tx: Tx, env: Envelope) -> dict[str, Any]:
+    """Keep a SUSPENDED task from every worker until task.release (the user decides)."""
+    task = load(tx, env)
+    if not sm.can_hold(task["state"]):
+        raise sm.InvalidTransition(task["state"], "SUSPENDED", "only a SUSPENDED task can be held")
+    if not task["held"]:
+        tx.execute(
+            "UPDATE tasks SET held = 1, updated_at = ? WHERE task_id = ?",
+            (tx.ts, task["task_id"]),
+        )
+        tx.event("held", env.sender, task["dialog_id"], task["task_id"])
+    return reload(tx, task["task_id"])
+
+
+def release(tx: Tx, env: Envelope) -> dict[str, Any]:
+    """End a hold: the task can be resumed or reclaimed again."""
+    task = load(tx, env)
+    if task["held"]:
+        tx.execute(
+            "UPDATE tasks SET held = 0, updated_at = ? WHERE task_id = ?",
+            (tx.ts, task["task_id"]),
+        )
+        tx.event("released", env.sender, task["dialog_id"], task["task_id"])
     return reload(tx, task["task_id"])
 
 

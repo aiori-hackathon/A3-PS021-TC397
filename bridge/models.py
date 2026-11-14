@@ -39,6 +39,8 @@ Op = Literal[
     "task.claim_next",
     "task.claim",
     "task.resume",
+    "task.hold",
+    "task.release",
     "task.checkpoint",
     "task.effect_intent",
     "task.effect_result",
@@ -57,6 +59,8 @@ EventType = Literal[
     "cancelled",
     "claimed",
     "resumed",
+    "held",
+    "released",
     "checkpoint",
     "effect_intent",
     "effect_committed",
@@ -220,6 +224,8 @@ PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     "task.claim_next": EmptyPayload,
     "task.claim": EmptyPayload,
     "task.resume": EmptyPayload,
+    "task.hold": EmptyPayload,
+    "task.release": EmptyPayload,
     "task.checkpoint": CheckpointPayload,
     "task.effect_intent": EffectIntentPayload,
     "task.effect_result": EffectResultPayload,
@@ -297,6 +303,17 @@ class Checkpoint(_Strict):
     output: dict[str, Any] = Field(default_factory=dict)
 
 
+class Progress(_Strict):
+    """In claim and resume replies only: what is done, from the bridge's checkpoint log."""
+
+    steps_total: int
+    done: list[Checkpoint]
+    next_step_index: int
+    next_step: str | None
+    effect: EffectStatus
+    summary: str
+
+
 class Task(_Strict):
     task_id: str
     dialog_id: str
@@ -314,12 +331,14 @@ class Task(_Strict):
     depends_on: list[int]
     needs_confirmation: bool
     confirmed: bool
+    held: bool = False
     effect: Effect
     last_checkpoint: Checkpoint | None
     result: Any = None
     reason: str | None = None
     created_at: str
     updated_at: str
+    progress: Progress | None = None
 
 
 class Event(_Strict):

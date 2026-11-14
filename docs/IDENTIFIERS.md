@@ -39,6 +39,8 @@ agent rebuilds exactly the same key without having to remember it.
 | Agent A creates a dialog | `{msg_id}:create` |
 | Agent A confirms a task | `{task_id}:confirm` |
 | Agent A cancels a task | `{task_id}:cancel` |
+| Agent A holds a task after a worker crash | `{task_id}:hold:{seq}`, `seq` of the `lease_expired` event |
+| Agent A releases it (the user chose Continue) | `{task_id}:release:{seq}`, the same `seq` |
 | Agent registers | `{agent_id}:register:{boot_id}` |
 | Worker claims next task | `{agent_id}:claim_next:{boot_id}:{poll_counter}` |
 | Worker claims a specific task (S2) | `{agent_id}:claim:{task_id}:{boot_id}` |

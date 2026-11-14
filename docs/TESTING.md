@@ -22,6 +22,7 @@ router and state machine). If a test passes, the real system works.
 | X5 | Extra | Cancel before side effect | CANCELLED, ledger empty |
 | X6 | Extra | Dependency fails | Second task never starts |
 | X7 | Extra | Duplicate dispatch to worker | Inbox absorbs the duplicate |
+| X8 | Extra | Worker crash asks the user | Task held until Continue; resumes from the progress report; 1 payment |
 | I1 | Interop | MCP-style round trip | Codec is lossless |
 | I2 | Interop | A2A-style round trip | Codec is lossless, including SUSPENDED |
 | I3 | Interop | Cross-adapter correlation | One dialog/task ID across both formats |
@@ -73,7 +74,7 @@ tests/
 ├── test_s3_crash_before_effect.py
 ├── test_s4_crash_after_effect.py
 ├── test_s5_bridge_restart.py
-├── test_extras.py                # X1–X7
+├── test_extras.py                # X1–X8
 ├── test_interop.py               # I3
 ├── test_rules.py                 # R1–R4
 ├── test_mutation.py              # M1 (run separately)
@@ -237,6 +238,15 @@ got stuck).
 ### X7 — Duplicate dispatch
 - **Trap:** `{link: agent_b, action: duplicate, match: {op: task.checkpoint}}`.
 - **Check:** one checkpoint row per step; a `duplicate_request` event; ledger 1.
+
+### X8 — Crash asks the user, then continues from the progress report
+- `AUTO_CONFIRM=0`. **Trap:** Agent B with `CRASH_AT=before_pay`.
+- **Check:** after the lease expires the task is SUSPENDED and `held`; the chat
+  has a `decision` entry whose text includes "done: parse, plan". After
+  `/decide pause` and a restarted Agent B, the task is still SUSPENDED and held
+  (`resumed_on_start == 0`). After `/decide continue` it completes; its
+  `resumed` event says "step 3/5 (pay) next; done: parse, plan"; every step has
+  one checkpoint (nothing redone); ledger 1.
 
 ### I1, I2 — Codec round trips (unit, no servers)
 - For every op and every task state: `decode(encode(x)) == x`.

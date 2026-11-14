@@ -210,6 +210,23 @@ sends late is rejected.
   with an equal or higher fence; the `checkpoint` event then has `replaced: true`.
 - Lease times use the bridge's clock only.
 
+### Hold and release
+
+`task.hold` sets `held` on a SUSPENDED task; `task.release` clears it. Both are
+repeat-safe (a second hold or release changes nothing and logs no event) and
+log `held` / `released` events. While held, `task.claim` and `task.claim_next`
+refuse the task (`409 invalid_transition`) and `task.resume` leaves it out,
+even for its previous owner. Agent A holds a task right after its worker's
+lease expires when `AUTO_CONFIRM=0`, so the user can choose Continue or Keep
+paused ([ADAPTERS.md](ADAPTERS.md#crash-decision)).
+
+### Progress report
+
+Claim, claim-next, resume, hold and release replies carry a `progress` report
+built from the checkpoint log ([SCHEMA.md](SCHEMA.md#progress-report)). The
+`resumed` and `reclaimed` events carry its one-line `summary` in
+`data.progress`.
+
 ## Background jobs
 
 **Lease watchdog** (every `WATCHDOG_TICK`):

@@ -282,6 +282,8 @@
             "task.claim_next",
             "task.claim",
             "task.resume",
+            "task.hold",
+            "task.release",
             "task.checkpoint",
             "task.effect_intent",
             "task.effect_result",
@@ -431,6 +433,8 @@
             "cancelled",
             "claimed",
             "resumed",
+            "held",
+            "released",
             "checkpoint",
             "effect_intent",
             "effect_committed",
@@ -511,6 +515,61 @@
         }
       },
       "title": "HeartbeatPayload",
+      "type": "object"
+    },
+    "Progress": {
+      "additionalProperties": false,
+      "description": "In claim and resume replies only: what is done, from the bridge's checkpoint log.",
+      "properties": {
+        "done": {
+          "items": {
+            "$ref": "#/$defs/Checkpoint"
+          },
+          "title": "Done",
+          "type": "array"
+        },
+        "effect": {
+          "enum": [
+            "none",
+            "intent",
+            "committed"
+          ],
+          "title": "Effect",
+          "type": "string"
+        },
+        "next_step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Step"
+        },
+        "next_step_index": {
+          "title": "Next Step Index",
+          "type": "integer"
+        },
+        "steps_total": {
+          "title": "Steps Total",
+          "type": "integer"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "steps_total",
+        "done",
+        "next_step_index",
+        "next_step",
+        "effect",
+        "summary"
+      ],
+      "title": "Progress",
       "type": "object"
     },
     "RegisterPayload": {
@@ -626,6 +685,11 @@
           "title": "Fence",
           "type": "integer"
         },
+        "held": {
+          "default": false,
+          "title": "Held",
+          "type": "boolean"
+        },
         "index": {
           "title": "Index",
           "type": "integer"
@@ -678,6 +742,17 @@
           "additionalProperties": true,
           "title": "Params",
           "type": "object"
+        },
+        "progress": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Progress"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "reason": {
           "anyOf": [

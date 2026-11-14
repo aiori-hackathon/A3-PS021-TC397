@@ -570,3 +570,84 @@ def test_cors_allows_dashboard_origin(bridge):
         headers={"Origin": "http://localhost:8000", "Access-Control-Request-Method": "GET"},
     )
     assert r.headers.get("access-control-allow-origin") == "http://localhost:8000"
+
+
+# --- hold / release and the progress report (docs/BRIDGE.md#hold-and-release) ---------
+
+
+def suspended_after_two_steps(bridge, msg_id):
+    """A task whose worker checkpointed parse and plan, then stopped (retryable fail)."""
+    tid = flows.dispatched_task(bridge, msg_id)
+    task = flows.claim(bridge, tid)[1].result
+    flows.run_steps(bridge, task, 1, 0, 2)
+    flows.worker_write(bridge, "task.fail", task, 1, {"reason": "crashed", "retryable": True})
+    return tid
+
+
+def hold(bridge, tid, n=1):
+    return bridge.mcp("task.hold", request_id=f"{tid}:hold:{n}", task_id=tid)
+
+
+def release(bridge, tid, n=1):
+    return bridge.mcp("task.release", request_id=f"{tid}:release:{n}", task_id=tid)
+
+
+def test_a_held_task_is_given_to_no_worker_until_released(fresh_bridge):
+    bridge = fresh_bridge
+    tid = suspended_after_two_steps(bridge, "hold")
+    status, reply = hold(bridge, tid)
+    assert status == 200
+    assert (reply.result["state"], reply.result["held"]) == ("SUSPENDED", True)
+
+    status, reply = flows.claim(bridge, tid, "agent_b2")
+    assert status == 409 and reply.error.code == "invalid_transition"
+    status, reply = bridge.a2a("task.claim_next", request_id="agent_b2:claim_next:boot1:1")
+    assert reply.result is None
+    status, reply = flows.resume(bridge, "agent_b", boot="boot2")
+    assert reply.result == {"tasks": []}  # even the owner waits for the user
+    assert bridge.task(tid)["state"] == "SUSPENDED"
+
+    status, reply = release(bridge, tid)
+    assert status == 200 and reply.result["held"] is False
+    status, reply = flows.resume(bridge, "agent_b", boot="boot3")
+    [resumed] = reply.result["tasks"]
+    assert (resumed["task_id"], resumed["state"], resumed["fence"]) == (tid, "IN_PROGRESS", 2)
+    assert_events_in_order(bridge.events(task_id=tid), ["held", "released", "resumed"])
+
+
+def test_only_a_suspended_task_can_be_held(bridge, uid):
+    tid = flows.dispatched_task(bridge, uid)
+    status, reply = hold(bridge, tid)
+    assert status == 409 and reply.error.code == "invalid_transition"
+    flows.claim(bridge, tid)
+    status, reply = hold(bridge, tid, 2)
+    assert status == 409 and reply.error.code == "invalid_transition"
+    assert bridge.task(tid)["held"] is False
+
+
+def test_hold_and_release_twice_change_nothing_the_second_time(bridge, uid):
+    tid = suspended_after_two_steps(bridge, uid)
+    assert hold(bridge, tid, 1)[1].result["held"] is True
+    assert hold(bridge, tid, 2)[1].result["held"] is True
+    assert release(bridge, tid, 1)[1].result["held"] is False
+    assert release(bridge, tid, 2)[1].result["held"] is False
+    types = bridge.event_types(task_id=tid)
+    assert (types.count("held"), types.count("released")) == (1, 1)
+
+
+def test_claim_and_resume_replies_carry_the_progress_report(bridge, uid):
+    fresh = flows.dispatched_task(bridge, uid + "-new")
+    progress = flows.claim(bridge, fresh)[1].result["progress"]
+    assert progress["done"] == [] and progress["next_step_index"] == 0
+
+    tid = suspended_after_two_steps(bridge, uid)
+    status, reply = flows.claim(bridge, tid, "agent_b2")
+    assert status == 200
+    progress = reply.result["progress"]
+    assert [d["step"] for d in progress["done"]] == ["parse", "plan"]
+    assert (progress["next_step_index"], progress["next_step"]) == (2, "work")
+    assert progress["steps_total"] == 4
+    assert progress["effect"] == "none"
+    assert progress["summary"] == "step 3/4 (work) next; done: parse, plan"
+    reclaimed = bridge.events(task_id=tid, type="reclaimed")[-1]
+    assert reclaimed["data"]["progress"] == progress["summary"]

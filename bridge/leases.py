@@ -13,6 +13,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from bridge import progress
 from bridge import state_machine as sm
 from bridge.db import Tx, iso
 from bridge.errors import BridgeError
@@ -72,6 +73,9 @@ def claim_row(tx: Tx, task: sqlite3.Row, agent: str, lease_seconds: float) -> No
         )
     if state not in ("DISPATCHED", "SUSPENDED"):
         raise sm.InvalidTransition(state, "IN_PROGRESS", f"a {state} task cannot be claimed")
+    if state == "SUSPENDED" and task["held"]:
+        raise sm.InvalidTransition(state, "IN_PROGRESS", "held until the user continues it")
+    summary = progress.report(tx, task)["summary"]
     guard = sm.lease_free(task["lease_until"], tx.now)
     if state == "SUSPENDED":
         guard = guard and sm.can_resume(task["attempt"], task["max_attempts"])
@@ -89,6 +93,7 @@ def claim_row(tx: Tx, task: sqlite3.Row, agent: str, lease_seconds: float) -> No
             "fence": task["fence"] + 1,
             "attempt": task["attempt"] + 1,
             "previous_owner": task["owner"],
+            "progress": summary,
         },
     )
 
@@ -99,7 +104,7 @@ def claim(tx: Tx, task: sqlite3.Row, env: Envelope, lease_seconds: float) -> Non
 
 def next_claimable(tx: Tx) -> sqlite3.Row | None:
     return tx.one(
-        "SELECT * FROM tasks WHERE state IN ('DISPATCHED', 'SUSPENDED')"
+        "SELECT * FROM tasks WHERE state IN ('DISPATCHED', 'SUSPENDED') AND held = 0"
         " AND attempt < max_attempts AND (lease_until IS NULL OR lease_until < ?)"
         " ORDER BY rowid LIMIT 1",
         (tx.now,),
@@ -119,13 +124,21 @@ def resume(tx: Tx, env: Envelope, lease_seconds: float) -> list[str]:
             continue  # out of attempts; the watchdog fails it when the lease runs out
         if task["state"] == "SUSPENDED" and not sm.lease_free(task["lease_until"], tx.now):
             continue
+        if task["state"] == "SUSPENDED" and task["held"]:
+            continue  # the user asked to keep it paused
+        summary = progress.report(tx, task)["summary"]
         _take(tx, task, env.sender, lease_seconds, True)
         tx.event(
             "resumed",
             env.sender,
             task["dialog_id"],
             task["task_id"],
-            {"fence": task["fence"] + 1, "attempt": task["attempt"] + 1, "from": task["state"]},
+            {
+                "fence": task["fence"] + 1,
+                "attempt": task["attempt"] + 1,
+                "from": task["state"],
+                "progress": summary,
+            },
         )
         resumed.append(task["task_id"])
     return resumed

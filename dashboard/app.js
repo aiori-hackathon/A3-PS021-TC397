@@ -332,11 +332,38 @@ function formatPlan(text) {
   return `<div class="plan">${out.join("")}</div>`;
 }
 
+// A worker crashed mid-task: Agent A held the task and asks what to do (docs/DASHBOARD.md).
+function decisionActions(m) {
+  const id = esc(m.task_id);
+  if (m.status === "open" || m.status === "paused") {
+    const pause = m.status === "open"
+      ? `<button data-decide="pause" data-task="${id}">Keep paused</button>`
+      : '<span class="decided">Kept paused. Continue whenever you are ready.</span>';
+    return `<div class="actions"><button class="good" data-decide="continue" data-task="${id}">Continue task</button>${pause}</div>`;
+  }
+  const said = { continued: "You chose Continue: the task picked up from the progress report.", closed: "The task has finished." }[m.status];
+  return said ? `<div class="actions"><span class="decided">${esc(said)}</span></div>` : "";
+}
+
+// Continue: release the hold, then start the crashed worker again (it resumes the task).
+async function continueTask(taskId) {
+  const r = await api(port("agent_a"), "/decide", { method: "POST", body: { task_id: taskId, choice: "continue" } });
+  if (!r.ok) { toast(`Continue refused: ${r.data && r.data.error ? r.data.error.message : r.status}`); return; }
+  const owner = r.data.owner;
+  if (owner && S.status[owner] && S.status[owner].status !== "running") {
+    await sup(`/restart/${owner}`);
+    toast(`Continuing: ${owner} restarted and gets the bridge's progress report`);
+  } else {
+    toast("Continuing: the next free worker resumes the task from the progress report");
+  }
+}
+
 function renderChat() {
   const el = $("chat");
   const html = S.chat.map((m) => {
-    const cls = m.kind === "user" ? "user" : m.kind === "notice" ? "notice" : m.kind === "summary" ? "summary" : "agent";
-    const who = { user: "You", notice: "Bridge notice", summary: "Summary" }[m.kind] || "Agent A";
+    const cls = m.kind === "user" ? "user" : m.kind === "notice" ? "notice" : m.kind === "summary" ? "summary"
+      : m.kind === "decision" ? "decision" : "agent";
+    const who = { user: "You", notice: "Bridge notice", summary: "Summary", decision: "Agent A · your decision" }[m.kind] || "Agent A";
     let actions = "";
     if (m.kind === "plan" && m.dialog_id) {
       const d = S.dialogs.find((x) => x.dialog_id === m.dialog_id);
@@ -347,6 +374,7 @@ function renderChat() {
         `<button class="danger" data-act="cancel" data-task="${esc(t.task_id)}">Cancel</button>`).join("");
       if (actions) actions = `<div class="actions">${actions}</div>`;
     }
+    if (m.kind === "decision") actions = decisionActions(m);
     const body = m.kind === "plan" ? formatPlan(m.text) : esc(m.text);
     return `<div class="msg ${cls}"><span class="who">${esc(who)}</span>${body}${actions}</div>`;
   }).join("");
@@ -540,6 +568,7 @@ function taskMeta(t) {
   if (t.attempt) bits.push(`attempt ${t.attempt}`);
   if (t.effect.status !== "none") bits.push(`effect ${t.effect.status}${t.effect.replayed ? " (replayed)" : ""}`);
   if (t.reason) bits.push(t.reason);
+  if (t.held) bits.push("held · waiting for your decision in the chat");
   let lease = "";
   if ((t.state === "IN_PROGRESS" || t.state === "EFFECT_PENDING") && t.lease_until) {
     lease = ` · <span data-lease="${esc(t.lease_until)}"></span>`;
@@ -1023,6 +1052,14 @@ function bind() {
   $("chat-form").addEventListener("submit", (ev) => { ev.preventDefault(); sendText($("chat-input").value); });
   $("btn-send").addEventListener("click", () => sendText($("chat-input").value));
   $("chat").addEventListener("click", async (ev) => {
+    const d = ev.target.closest("button[data-decide]");
+    if (d) {
+      d.disabled = true;
+      if (d.dataset.decide === "continue") await continueTask(d.dataset.task);
+      else await api(port("agent_a"), "/decide", { method: "POST", body: { task_id: d.dataset.task, choice: "pause" } });
+      poll();
+      return;
+    }
     const b = ev.target.closest("button[data-act]");
     if (!b) return;
     const r = await api(port("agent_a"), `/${b.dataset.act}`, { method: "POST", body: { task_id: b.dataset.task } });
@@ -1048,6 +1085,9 @@ function bind() {
     poll();
   });
   $("btn-recover").addEventListener("click", async () => {
+    // Recovering a worker also answers "Continue" for the tasks it was holding up.
+    const asked = S.chat.filter((m) => m.kind === "decision" && (m.status === "open" || m.status === "paused"));
+    for (const m of asked) await api(port("agent_a"), "/decide", { method: "POST", body: { task_id: m.task_id, choice: "continue" } });
     for (const [name, p] of Object.entries(S.status)) if (p.status === "crashed") await sup(`/restart/${name}`);
     poll();
   });

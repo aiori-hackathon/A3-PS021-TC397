@@ -123,6 +123,9 @@ Error reply:
 Here `messageId` **is** the idempotency key, which matches the A2A-style idea
 that a message has a unique ID.
 
+Agent A also sends `task.hold` and `task.release` (MCP-style) after a worker
+crash, for the user's Continue / Keep paused choice.
+
 Kinds Agent B uses: `agent.register`, `agent.heartbeat`, `task.claim_next`,
 `task.claim`, `task.resume`, `task.checkpoint`, `task.effect_intent`,
 `task.effect_result`, `task.complete`, `task.fail`, `events.since`.

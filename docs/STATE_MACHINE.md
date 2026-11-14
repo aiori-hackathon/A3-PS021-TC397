@@ -13,7 +13,7 @@ nothing is changed, and an `invalid_transition_rejected` event is logged.
 | `DISPATCHED` | Ready; any worker may claim it | no |
 | `IN_PROGRESS` | Claimed; the owner holds a lease and a fence | no |
 | `EFFECT_PENDING` | The owner recorded a side-effect intent; the effect may or may not have happened yet | no |
-| `SUSPENDED` | The owner's lease expired (crash, disconnect, or too slow); waiting to be resumed or reclaimed | no |
+| `SUSPENDED` | The owner's lease expired (crash, disconnect, or too slow); waiting to be resumed or reclaimed. It may also be **held** (`held: true`, via `task.hold`) while the user decides; a held task is not claimable until `task.release`. Holding is a flag, not a state, so the table below is unchanged | no |
 | `COMPLETED` | Finished successfully | **yes** |
 | `FAILED` | Gave up (max attempts, or a non-retryable error) | **yes** |
 | `CANCELLED` | Cancelled by the user, or because a dependency failed | **yes** |

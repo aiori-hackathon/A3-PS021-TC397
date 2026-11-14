@@ -72,7 +72,10 @@ class AgentA(Agent):
         self.chat: dict[tuple, dict[str, Any]] = {}
         self.in_flight: set[str] = set()  # msg_ids whose /message call is still running
         self.last_request: tuple[str, str, dict[str, Any]] | None = None
+        # Lease expiries waiting for a hold + question (AUTO_CONFIRM=0): (task_id, seq, data).
+        self.to_hold: list[tuple[str, int, dict[str, Any]]] = []
         self.app.post("/message")(self.route_message)
+        self.app.post("/decide")(self.route_decide)
         self.app.post("/confirm")(self.route_confirm)
         self.app.post("/cancel")(self.route_cancel)
         self.app.get("/chat")(self.route_chat)
@@ -187,6 +190,7 @@ class AgentA(Agent):
             for event in batch:
                 self.on_event(event)
                 self.cursor = event["seq"]
+            await self.ask_after_crashes()
             if len(batch) < EVENTS_PAGE:
                 await asyncio.sleep(self.settings.poll_interval)
 
@@ -234,6 +238,12 @@ class AgentA(Agent):
                     t["reason"] = data["reason"]
             elif kind == "effect_committed":
                 t["receipt_id"] = data["receipt_id"]
+            elif kind == "lease_expired" and not self.settings.auto_confirm:
+                self.to_hold.append((task_id, e["seq"], data))  # ask the user (run loop)
+            elif kind in ("held", "released"):
+                t["held"] = kind == "held"
+                if kind == "released":
+                    self.set_decision(task_id, "continued")
             elif kind == "lease_expired":
                 extra = (
                     " The side effect may already have happened; it will only be retried with"
@@ -250,14 +260,22 @@ class AgentA(Agent):
                     task_id=task_id,
                 )
             elif kind in ("resumed", "reclaimed"):
+                report = (
+                    f" Progress report from the bridge: {data['progress']}."
+                    if data.get("progress")
+                    else ""
+                )
                 self.say(
                     ("notice", e["seq"]),
                     "notice",
-                    f"Task {t['index']} {kind} by {e['actor']} (fence {data.get('fence')}).",
+                    f"Task {t['index']} {kind} by {e['actor']} (fence {data.get('fence')})."
+                    + report,
                     dialog_id=dialog_id,
                     task_id=task_id,
                 )
+                self.set_decision(task_id, "continued")
             elif kind in ("completed", "failed", "cancelled"):
+                self.set_decision(task_id, "closed")
                 text = f"Task {t['index']} {kind}: {describe(t['intent'], t['params'])}"
                 if kind != "completed" and data.get("reason"):
                     text += f" ({data['reason']})"
@@ -282,6 +300,79 @@ class AgentA(Agent):
                 "notice",
                 f"Bridge restarted: recovered {data.get('recovered_tasks')} open task(s).",
             )
+
+    # --- asking the user after a worker crash (docs/ADAPTERS.md#crash-decision) -------
+
+    def decision_for(self, task_id: str) -> dict[str, Any] | None:
+        found = [m for k, m in self.chat.items() if k[0] == "decision" and k[1] == task_id]
+        return found[-1] if found else None
+
+    def set_decision(self, task_id: str, status: str) -> None:
+        m = self.decision_for(task_id)
+        if m and m["status"] in ("open", "paused"):
+            m["status"] = status
+
+    async def ask_after_crashes(self) -> None:
+        """Hold each newly suspended task and ask the user whether to continue it."""
+        queue, self.to_hold = self.to_hold, []
+        for task_id, seq, data in queue:
+            t = self.tasks[task_id]
+            reply = None
+            if t["state"] == "SUSPENDED":
+                # Same request_id on every replay of this event: a repeat gets the stored reply.
+                reply = await self.call("task.hold", f"{task_id}:hold:{seq}", task_id=task_id)
+            if reply is None or not reply.ok:  # resumed, reclaimed or failed meanwhile
+                self.say(
+                    ("notice", seq),
+                    "notice",
+                    f"{data.get('owner')} stopped responding during {data.get('from')}. "
+                    f"Task {t['index']} {t['state'].lower()}.",
+                    dialog_id=t["dialog_id"],
+                    task_id=task_id,
+                )
+                continue
+            effect = (
+                " The side effect may already have happened; it will only be retried with"
+                " the same key."
+                if data.get("from") == "EFFECT_PENDING"
+                else ""
+            )
+            self.say(
+                ("decision", task_id, seq),
+                "decision",
+                f"{data.get('owner')} stopped responding during {data.get('from')} on task "
+                f"{t['index']} ({describe(t['intent'], t['params'])}). Progress report from the"
+                f" bridge: {(reply.result.get('progress') or {}).get('summary', 'not available')}."
+                f"{effect} I have held the task"
+                " so nothing resumes without you. Continue it now, or keep it paused?",
+                dialog_id=t["dialog_id"],
+                task_id=task_id,
+                owner=data.get("owner"),
+                seq=seq,
+                status="open",
+            )
+
+    async def route_decide(self, body: dict[str, Any] = Body(...)) -> JSONResponse:
+        """The user's answer: {"task_id", "choice": "continue" | "pause"}."""
+        task_id, choice = body.get("task_id"), body.get("choice")
+        m = self.decision_for(task_id)
+        if m is None or choice not in ("continue", "pause"):
+            return JSONResponse(
+                {"ok": False, "error": {"message": "no open question for that task and choice"}},
+                status_code=404,
+            )
+        if choice == "pause":
+            if m["status"] == "open":
+                m["status"] = "paused"
+            return JSONResponse({"ok": True, "status": m["status"], "owner": m["owner"]})
+        reply = await self.call("task.release", f"{task_id}:release:{m['seq']}", task_id=task_id)
+        if not reply.ok:
+            return JSONResponse(
+                {"ok": False, "error": reply.error.model_dump(mode="json")},
+                status_code=ERROR_HTTP_STATUS[reply.error.code],
+            )
+        self.set_decision(task_id, "continued")
+        return JSONResponse({"ok": True, "status": "continued", "owner": m["owner"]})
 
     # --- routes ---------------------------------------------------------------------
 

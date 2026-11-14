@@ -16,7 +16,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from bridge import events, inbox, leases, registry, tasks
+from bridge import events, inbox, leases, progress, registry, tasks
 from bridge import state_machine as sm
 from bridge.db import Database, Tx
 from bridge.errors import BridgeError
@@ -66,6 +66,10 @@ class Bridge:
             "task.claim_next": self.op_claim_next,
             "task.claim": self.op_claim,
             "task.resume": self.op_resume,
+            "task.hold": lambda tx, env, _: self._with_progress(tx, tasks.hold(tx, env)["task_id"]),
+            "task.release": lambda tx, env, _: self._with_progress(
+                tx, tasks.release(tx, env)["task_id"]
+            ),
             "task.checkpoint": lambda tx, env, _: tasks.checkpoint(tx, env),
             "task.effect_intent": lambda tx, env, _: tasks.effect_intent(tx, env),
             "task.effect_result": lambda tx, env, _: tasks.effect_result(tx, env),
@@ -182,18 +186,26 @@ class Bridge:
     def op_claim(self, tx: Tx, env: Envelope, protocol: str) -> dict[str, Any]:
         task = tasks.load(tx, env)
         leases.claim(tx, task, env, self.settings.lease_seconds)
-        return tasks.reload(tx, task["task_id"])
+        return self._with_progress(tx, task["task_id"])
 
     def op_claim_next(self, tx: Tx, env: Envelope, protocol: str) -> dict[str, Any] | None:
         task = leases.next_claimable(tx)
         if task is None:
             return None
         leases.claim(tx, task, env, self.settings.lease_seconds)
-        return tasks.reload(tx, task["task_id"])
+        return self._with_progress(tx, task["task_id"])
 
     def op_resume(self, tx: Tx, env: Envelope, protocol: str) -> dict[str, Any]:
         ids = leases.resume(tx, env, self.settings.lease_seconds)
-        return {"tasks": [tasks.reload(tx, task_id) for task_id in ids]}
+        return {"tasks": [self._with_progress(tx, task_id) for task_id in ids]}
+
+    @staticmethod
+    def _with_progress(tx: Tx, task_id: str) -> dict[str, Any]:
+        """A claim, resume, hold or release reply: the task record plus its progress report."""
+        return {
+            **tasks.reload(tx, task_id),
+            "progress": progress.report(tx, tasks.row(tx, task_id)),
+        }
 
     def op_events_since(self, tx: Tx, env: Envelope, protocol: str) -> dict[str, Any]:
         p = EventsSincePayload.model_validate(env.payload)

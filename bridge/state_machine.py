@@ -156,6 +156,20 @@ def can_checkpoint(state: str) -> bool:
     return state in WORKING
 
 
+def can_hold(state: str) -> bool:
+    """task.hold: only a task nobody owns any more (SUSPENDED) can be held for the user."""
+    return state == "SUSPENDED"
+
+
+def progress_summary(steps: list[str], done: list[str]) -> str:
+    """One line for the progress report a resuming worker gets, e.g. for the chat."""
+    if len(done) >= len(steps):
+        return f"all {len(steps)} steps done"
+    nxt = len(done)
+    head = f"step {nxt + 1}/{len(steps)} ({steps[nxt]}) next"
+    return f"{head}; done: {', '.join(done)}" if done else f"{head}; nothing done yet"
+
+
 def expected_effect_key(task_id: str, action: str) -> str:
     """The side-effect idempotency key. Never includes the fence or the attempt."""
     return f"{task_id}:{action}"

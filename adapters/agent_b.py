@@ -41,6 +41,7 @@ class AgentB(Agent):
         self.current: dict[str, Any] | None = None
         self.actions_url = self.settings.url(self.settings.actions_port)
         self.background: set[asyncio.Task] = set()
+        self.resumed_on_start: int | None = None  # how many tasks task.resume gave back
         self.app.post("/pause")(self.route_pause)
         self.app.post("/unpause")(self.route_unpause)
         self.app.post("/claim")(self.route_claim)
@@ -51,6 +52,7 @@ class AgentB(Agent):
         await self.register()
         reply = await self.call("task.resume", f"{self.agent_id}:resume:{self.boot_id}")
         resumed = reply.result["tasks"] if reply.ok else []
+        self.resumed_on_start = len(resumed)
         self.log(f"resume: {len(resumed)} task(s) to continue")
         for task in resumed:
             await self.work_on(task)
@@ -70,8 +72,12 @@ class AgentB(Agent):
     async def work_on(self, task: dict[str, Any]) -> None:
         task_id = task["task_id"]
         self.owned.add(task_id)
+        # The bridge's progress report says where to continue; this agent kept nothing.
+        progress = task.get("progress")
         cp = task["last_checkpoint"]
-        start = cp["step_index"] + 1 if cp else 0
+        start = progress["next_step_index"] if progress else (cp["step_index"] + 1 if cp else 0)
+        if progress and progress["done"]:
+            self.log(f"progress report for {task_id}: {progress['summary']}")
         self.log(
             f"working on {task_id} ({task['intent']}) from step {start}, "
             f"fence {task['fence']}, attempt {task['attempt']}"
@@ -230,7 +236,12 @@ class AgentB(Agent):
         return JSONResponse({"ok": True, "task": reply.result})
 
     def state(self) -> dict[str, Any]:
-        return {**super().state(), "paused": self.paused, "current": self.current}
+        return {
+            **super().state(),
+            "paused": self.paused,
+            "current": self.current,
+            "resumed_on_start": self.resumed_on_start,
+        }
 
 
 def main() -> None:

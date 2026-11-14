@@ -150,6 +150,10 @@ class AgentAClient(_Http):
     def cancel(self, task_id: str) -> dict[str, Any]:
         return self._post("/cancel", {"task_id": task_id}, ok=False)
 
+    def decide(self, task_id: str, choice: str) -> dict[str, Any]:
+        """The user's answer after a worker crash: "continue" or "pause"."""
+        return self._post("/decide", {"task_id": task_id, "choice": choice}, ok=False)
+
     def chat(self) -> list[dict[str, Any]]:
         return self._get("/chat")
 

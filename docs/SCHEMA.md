@@ -55,15 +55,40 @@ The Pydantic models in `bridge/models.py` are the source of truth. The file
 | `dialog.get` | any | no | — | dialog + tasks |
 | `task.confirm` | Agent A | yes | — | task |
 | `task.cancel` | Agent A | yes | `reason` | task |
-| `task.claim_next` | worker | yes | — | claimed task + fence + lease, or `null` |
-| `task.claim` | worker | yes | — | claimed task + fence + lease (used by the race test) |
-| `task.resume` | worker | yes | — | `{tasks: [...]}`: all tasks this agent owned, with last checkpoints, re-claimed with new fences |
+| `task.claim_next` | worker | yes | — | claimed task + fence + lease + `progress`, or `null` |
+| `task.claim` | worker | yes | — | claimed task + fence + lease + `progress` (used by the race test) |
+| `task.resume` | worker | yes | — | `{tasks: [...]}`: all tasks this agent owned (except held ones), with last checkpoints and a `progress` report, re-claimed with new fences |
+| `task.hold` | Agent A (for the user) | yes | — | task with `held: true` and `progress`. Only a SUSPENDED task; anything else → `409 invalid_transition`. While held, no worker may claim or resume it |
+| `task.release` | Agent A (for the user) | yes | — | task with `held: false` and `progress`; the task can be resumed or reclaimed again |
 | `task.checkpoint` | worker (owner) | yes | `step_index`, `step`, `output` | task |
 | `task.effect_intent` | worker (owner) | yes | `effect_key`, `action`, `params` | task (now EFFECT_PENDING) |
 | `task.effect_result` | worker (owner) | yes | `receipt_id`, `replayed` | task |
 | `task.complete` | worker (owner) | yes | `result` | task |
 | `task.fail` | worker (owner) | yes | `reason`, `retryable` | task: FAILED, or SUSPENDED if `retryable` |
 | `events.since` | any | no | `seq` | `{events: [...], last_seq}`: events after `seq` (up to 1000) |
+
+### Progress report
+
+Claim, claim-next, resume, hold and release replies add `progress` to the task
+record, built from the bridge's checkpoint log. A worker keeps no state of its
+own, so after a crash this is how it learns where to continue:
+
+```json
+"progress": {
+  "steps_total": 5,
+  "done": [
+    { "step_index": 0, "step": "parse", "output": {} },
+    { "step_index": 1, "step": "plan", "output": {} }
+  ],
+  "next_step_index": 2,
+  "next_step": "pay",
+  "effect": "none",
+  "summary": "step 3/5 (pay) next; done: parse, plan"
+}
+```
+
+Other task records (`GET /tasks`, events, views) do not carry it. `held` is
+`true` only while a SUSPENDED task waits for the user (see `task.hold`).
 
 ## 2. Records
 
@@ -100,6 +125,7 @@ The Pydantic models in `bridge/models.py` are the source of truth. The file
   "depends_on": [],
   "needs_confirmation": true,
   "confirmed": true,
+  "held": false,
   "effect": { "key": "tsk_8c1f0a2b9e44:pay", "status": "intent", "receipt_id": null, "replayed": false },
   "last_checkpoint": { "step_index": 1, "step": "plan", "output": {} },
   "result": null,

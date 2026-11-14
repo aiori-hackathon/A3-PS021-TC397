@@ -25,6 +25,8 @@ GROUPS: dict[str, frozenset[str]] = {
             "cancelled",
             "claimed",
             "resumed",
+            "held",
+            "released",
             "checkpoint",
             "effect_intent",
             "effect_committed",

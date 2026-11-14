@@ -103,6 +103,14 @@ itself after 4 seconds.
 - Bridge notices read like *"agent_b stopped responding during EFFECT_PENDING.
   Task 1 suspended. The side effect may already have happened; it will only be
   retried with the same key."*
+- **After a worker crash** (auto-confirm off) Agent A asks instead: a card with
+  an amber border shows the bridge's progress report and two buttons,
+  **Continue task** and **Keep paused**. Continue releases the hold and
+  restarts the crashed worker, which resumes from the next step; the chat then
+  says *"Task 1 resumed by agent_b (fence 2). Progress report from the bridge:
+  step 3/5 (pay) next; done: parse, plan."* The task row says "held · waiting
+  for your decision in the chat" meanwhile. **Recover agent** also counts as
+  Continue for every task waiting on that question.
 - The input bar stays at the bottom of the card and the chat scrolls to the
   newest message.
 

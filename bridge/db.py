@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   depends_on         TEXT NOT NULL DEFAULT '[]',
   needs_confirmation INTEGER NOT NULL DEFAULT 0,
   confirmed          INTEGER NOT NULL DEFAULT 0,
+  held               INTEGER NOT NULL DEFAULT 0,
   effect_key         TEXT,
   effect_status      TEXT NOT NULL DEFAULT 'none',
   receipt_id         TEXT,
@@ -195,6 +196,10 @@ class Database:
         self.conn.executescript(
             SCHEMA_SQL.replace("{msg_id_unique}", "" if disable_dedup else "UNIQUE")
         )
+        # A demo database from before `held` existed: add the column, nothing else changes.
+        columns = {r["name"] for r in self.conn.execute("PRAGMA table_info(tasks)")}
+        if "held" not in columns:
+            self.conn.execute("ALTER TABLE tasks ADD COLUMN held INTEGER NOT NULL DEFAULT 0")
 
     def integrity_ok(self) -> bool:
         with self.lock:

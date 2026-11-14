@@ -1,4 +1,4 @@
-"""X1-X7: additional scenarios (docs/TESTING.md#x1--uncertain-side-effect-outcome)."""
+"""X1-X8: additional scenarios (docs/TESTING.md#x1--uncertain-side-effect-outcome)."""
 
 import httpx
 import pytest
@@ -196,3 +196,61 @@ def test_x7_duplicate_dispatch_to_worker(world):
     assert len(applied) == 1
     assert world.actions.count(task_id=task_id, action="pay") == 1
     world.record(key_number="1 checkpoint row per step; duplicate absorbed")
+
+
+def decision(world, task_id: str, status: str) -> dict:
+    return wait_until(
+        lambda: next(
+            (
+                m
+                for m in world.agent_a.chat()
+                if m["kind"] == "decision" and m["task_id"] == task_id and m["status"] == status
+            ),
+            None,
+        ),
+        timeout=10,
+    )
+
+
+@pytest.mark.world_env(AUTO_CONFIRM="0")
+def test_x8_crash_asks_the_user_then_continues_from_the_progress_report(world):
+    world.caption("Setting trap: Agent B will crash just before paying")
+    world.supervisor.restart("agent_b", env={"CRASH_AT": "before_pay"})
+    plan = world.agent_a.message(PAY, msg_id="x8")
+    [task_id] = plan["task_ids"]
+    task_in(world, task_id, "AWAITING_CONFIRMATION")
+    assert world.agent_a.confirm(task_id)["ok"] is True
+    process_is(world, "agent_b", "crashed")
+
+    world.caption("The lease runs out: Agent A holds the task and asks the user")
+    held = wait_until(lambda: (t := world.bridge.task(task_id))["held"] and t, timeout=10)
+    assert held["state"] == "SUSPENDED"
+    ask = decision(world, task_id, "open")
+    assert "done: parse, plan" in ask["text"]
+
+    world.caption("The user chooses Keep paused; Agent B comes back but does not take the task")
+    assert world.agent_a.decide(task_id, "pause")["ok"] is True
+    decision(world, task_id, "paused")
+    world.supervisor.restart("agent_b")
+    wait_until(lambda: world.agent_b.state().get("resumed_on_start") == 0, timeout=10)
+    task = world.bridge.task(task_id)
+    assert (task["state"], task["held"]) == ("SUSPENDED", True)
+
+    world.caption("The user chooses Continue: Agent B resumes from the progress report")
+    assert world.agent_a.decide(task_id, "continue")["ok"] is True
+    done = task_in(world, task_id, "COMPLETED")
+    decision(world, task_id, "continued")
+    [resumed] = events_of(world, task_id, "resumed")
+    assert resumed["data"]["progress"] == "step 3/5 (pay) next; done: parse, plan"
+    assert checkpoint_counts(world, task_id) == dict.fromkeys(range(5), 1)  # nothing redone
+    assert world.actions.count(task_id=task_id, action="pay") == 1
+    notice = chat_has(world, "notice", plan["dialog_id"])
+    assert any(
+        "done: parse, plan" in m["text"] for m in world.agent_a.chat() if m["kind"] == "notice"
+    )
+    world.record(
+        side_effects=world.actions.count(task_id=task_id, action="pay"),
+        fence=done["fence"],
+        key_number="held until the user continued; resumed at step 3/5 (pay)",
+    )
+    assert notice
