@@ -239,6 +239,14 @@ got stuck).
 - **Trap:** `{link: agent_b, action: duplicate, match: {op: task.checkpoint}}`.
 - **Check:** one checkpoint row per step; a `duplicate_request` event; ledger 1.
 
+### Checks added to existing tests
+
+- **C1 and S5 replay check:** after the run, `GET /verify` must report `ok` (the
+  event log alone rebuilds every task and matches the database), and a second
+  call must return the same state hash.
+- **S4 evidence:** Agent B's log shows it asked the ledger first and got
+  `VERIFIED_DONE` before retrying with the same key.
+
 ### X8 — Crash asks the user, then continues from the progress report
 - `AUTO_CONFIRM=0`. **Trap:** Agent B with `CRASH_AT=before_pay`.
 - **Check:** after the lease expires the task is SUSPENDED and `held`; the chat

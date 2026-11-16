@@ -105,7 +105,8 @@ TEST_MODE=watch pytest -k s4
 | [docs/PROTOCOLS.md](docs/PROTOCOLS.md) | MCP-style and A2A-style wire formats and codecs |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Agent A and Agent B: roles, loops, crash points |
 | [docs/INTENT_ROUTING.md](docs/INTENT_ROUTING.md) | Rule-based intent router and task templates |
-| [docs/DEDUP_AND_RECOVERY.md](docs/DEDUP_AND_RECOVERY.md) | How duplicates are stopped and how recovery works |
+| [docs/DEDUP_AND_RECOVERY.md](docs/DEDUP_AND_RECOVERY.md) | How duplicates are stopped and how recovery works; the failure and recovery matrix |
+| [docs/PSEUDOCODE.md](docs/PSEUDOCODE.md) | The five routines that matter, with the crash windows marked |
 | [docs/ACTIONS_SERVICE.md](docs/ACTIONS_SERVICE.md) | The mock side-effect service and its ledger |
 | [docs/FAULT_INJECTION.md](docs/FAULT_INJECTION.md) | Breaking things on purpose: rule format |
 | [docs/SUPERVISOR.md](docs/SUPERVISOR.md) | Starting, killing, restarting, resetting |
@@ -158,6 +159,7 @@ A3-PS021-TC397/
 ├── tests/                   # see docs/TESTING.md
 ├── scripts/build_results.py # results/ -> docs/RESULTS.md tables
 ├── scripts/run_all.py      # one evidence run (suite, M1, C1, M2, stability) + RESULTS.md
+├── scripts/check_links.py  # every relative link and anchor in the docs (run by CI)
 ├── supervisor.py
 ├── config.py               # env vars with per-mode defaults (docs/CONFIG.md)
 ├── requirements.txt

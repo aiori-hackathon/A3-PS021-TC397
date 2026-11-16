@@ -67,6 +67,7 @@ DISABLE_DEDUP=1 pytest -m mutation      # M1
 pytest -m slow                          # C1 chaos
 pytest -m compare                       # M2 protection on vs off, several seeds
 python scripts/build_results.py results/<run_id>
+python scripts/check_links.py           # every relative link and anchor in the docs
 ```
 
 ## Wording rules for docs, comments and UI text

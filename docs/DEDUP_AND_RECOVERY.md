@@ -16,6 +16,14 @@ what they rely on.
 These hold under the assumptions listed at the end. We do **not** claim
 exactly-once delivery in general ([LIMITATIONS.md](LIMITATIONS.md)).
 
+## The delivery model in one sentence
+
+**At-least-once delivery + an idempotent receiver + a single fenced writer = no
+duplicate side effects, within the assumptions below.** Messages may be sent
+more than once; the receiver makes the repeats harmless. This is a statement
+about this prototype, not about networks in general
+([LIMITATIONS.md](LIMITATIONS.md)).
+
 ## Four layers of protection
 
 | Layer | Where | Stops |
@@ -124,6 +132,53 @@ worker, and the ledger resolves it.
 3. Agents call `events.since(last_seq)` to catch up; the sequence continues
    without gaps because `seq` is an autoincrement column.
 4. The dashboard reconnects its WebSocket and catches up the same way.
+
+## Evidence: three answers, and "unknown" is not "no"
+
+When a worker comes back after a crash between "I am about to act" and "I
+recorded the result", it asks the actions ledger what it knows
+(`GET /audit/{key}`, read-only) and gets one of three answers:
+
+| Answer | Meaning | What the worker does |
+| --- | --- | --- |
+| `VERIFIED_DONE` | The ledger holds the key: the effect happened | Retries with the same key and receives the original receipt |
+| `VERIFIED_NOT_EXECUTED` | The ledger answered and does not hold the key | Performs it, with that key |
+| `UNKNOWN` | No trustworthy answer (the service is unreachable or errored) | Retries with the same key; it never assumes "not done" |
+
+In every case the worker's action is the same safe one, a retry with the same
+key, so the evidence explains what it found rather than deciding anything
+(`adapters/evidence.py`; the answer is in Agent B's log, shown by S4). A
+ledger row proves the effect happened only for this prototype's own ledger; it
+is not a universal proof about an outside system.
+
+## Failure and recovery matrix
+
+Every row is proven by a test in `tests/`; the numbers are in
+[RESULTS.md](RESULTS.md).
+
+| Failure | What is lost | What survives | Recovery | Result | Proven by |
+| --- | --- | --- | --- | --- | --- |
+| Reply to `dialog.create` lost | Agent A's copy of the reply | The dialog in the bridge; Agent A's pending list | Agent A retries `{msg_id}:create`; the inbox returns the stored reply | One dialog, one task, one payment | S1 |
+| Two workers claim one task | Nothing | The task row | One claim wins inside the transaction; the other gets `already_claimed` | One winner, one payment | S2 |
+| Worker crashes before the side effect | The worker's memory | Checkpoints, fence | Resume from the last checkpoint with a higher fence | Earlier steps not redone; one payment | S3 |
+| Worker crashes **after** the side effect, before reporting it | What the worker knew | The ledger row, the recorded intent | Resume; the same key returns the original receipt | One payment, same receipt | S4 |
+| Bridge hard-killed during a network cut | Requests in flight | SQLite database and event log | Startup recovery; agents retry the same IDs and catch up with `events.since` | Same task completes; event numbers continue; the log rebuilds the database | S5 |
+| Reply from the actions service lost | The reply | The ledger row | The worker retries the same key | Original receipt, no second effect | X1 |
+| Worker slow, not dead | Nothing | Its heartbeats keep the lease | No reclaim | One owner throughout | X2 |
+| Agent A crashes right after creating the dialog | Agent A's memory | The dialog in the bridge | Agent A retries; the inbox absorbs it | One dialog | X3 |
+| Worker crashes at the same point every time | Nothing | Attempt count | After `max_attempts` the task fails | `FAILED`, no payment | X4 |
+| Cancel after the payment | Nothing | The committed effect | Cancel refused (`invalid_transition`) | The payment stands | X5 |
+| First task fails | Nothing | Dependent tasks | They are cancelled and never claimed | No orphan work | X6 |
+| A request delivered twice | Nothing | The inbox | The repeat returns the stored reply | One checkpoint | X7 |
+| Worker crashes and the user is asked | The worker's memory | The hold, checkpoints, progress report | The user chooses Continue; the worker resumes from the progress report | One payment, nothing redone | X8 |
+| An old owner writes after a takeover | Nothing | The fence | Refused as `stale_fence` | Nothing overwritten | R3 |
+| Same request ID, different body | Nothing | The inbox | Refused with 422 | The original reply unchanged | R4 |
+| Random faults, crashes and restarts together | Various | All of the above | All of the above | 0 duplicate side effects; the log rebuilds the database | C1, M2 |
+| Protection switched off on purpose | | | None | Duplicates appear, which proves the tests can catch them | M1, M2 |
+
+Not covered: loss of the bridge's disk, a corrupted database file, clock jumps
+on the bridge machine, and an outside service with no idempotency key
+([LIMITATIONS.md](LIMITATIONS.md)).
 
 ## Assumptions
 

@@ -12,6 +12,7 @@ are **real enough to count** and **impossible to repeat by key**.
 | `GET /ledger?task_id=&action=` | All performed effects, filterable |
 | `GET /ledger/count?task_id=&action=` | `{ "count": 1 }`, used by tests |
 | `GET /receipts/{receipt_id}` | One receipt, used by the `verify` step |
+| `GET /audit/{key}` | Read-only. `{key, evidence, receipt}` with `evidence` `VERIFIED_DONE` (the ledger holds the key) or `VERIFIED_NOT_EXECUTED`. A worker that gets no answer treats it as `UNKNOWN` ([DEDUP_AND_RECOVERY.md](DEDUP_AND_RECOVERY.md#evidence-three-answers-and-unknown-is-not-no)) |
 | `GET /health` | Liveness |
 | `POST /faults`, `DELETE /faults` | Fault rules for this service ([FAULT_INJECTION.md](FAULT_INJECTION.md)) |
 

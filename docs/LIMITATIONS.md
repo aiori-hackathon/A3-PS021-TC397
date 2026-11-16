@@ -29,6 +29,9 @@ that states what this project is **not**.
 - **No authentication:** any process on the machine can call the bridge as
   any agent. Acceptable on localhost; unacceptable on a network.
 - **Polling:** workers poll for work; fine for a demo, inefficient at scale.
+- **The replay check proves consistency, not truth:** it shows the event log
+  explains the database (`GET /verify`); it cannot tell whether an outside system
+  agrees.
 - **One side effect per task:** multi-effect work must be split into tasks.
 - **Rule-based routing:** keyword rules misread unusual phrasing; the dashboard
   shows what was detected so this is visible, never hidden.

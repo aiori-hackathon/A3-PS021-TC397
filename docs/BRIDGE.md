@@ -210,6 +210,34 @@ sends late is rejected.
   with an equal or higher fence; the `checkpoint` event then has `replaced: true`.
 - Lease times use the bridge's clock only.
 
+### Protection events
+
+Every event the protection layers write (`duplicate_request`,
+`request_id_conflict`, `stale_fence_blocked`, `invalid_transition_rejected`,
+`schema_rejected`, `duplicate_rejected`) carries two extra fields in `data`:
+`rule` (a short code such as `INBOX_REPEAT` or `FENCE_STALE`) and `reason`, one
+plain sentence built from the event's own numbers, e.g. *"task.checkpoint carried
+fence 1, but the task is already at fence 2: a newer owner exists, so this late
+write was refused."* The table is `bridge/rules.py` (pure; tested); the
+dashboard's Inspect log and Watch view show the reason instead of raw JSON.
+
+### Append-only event log
+
+The `events` table cannot be edited or emptied: SQLite triggers abort any
+`UPDATE` or `DELETE` on it, so history cannot be rewritten by the code or by hand
+(`bridge/db.py`; `tests/unit/test_event_log.py`). Rolling back a failed request
+is not a delete, so event numbers still have no gaps.
+
+### Replay check
+
+`GET /verify` (read-only) rebuilds every task's state, fence, attempt, effect
+status and hold from the event log **alone** and compares it with the `tasks`
+table. It reports whether the event numbers are gap-free, every difference
+found, and a hash of the rebuilt state that is the same on every run over the
+same log. C1 and S5 assert it after the chaos run and after a hard kill, and the
+Inspect tab has a **Replay check** button. Agreement is evidence that nothing
+changed a task without leaving an event.
+
 ### Hold and release
 
 `task.hold` sets `held` on a SUSPENDED task; `task.release` clears it. Both are

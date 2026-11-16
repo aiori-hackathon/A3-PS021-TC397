@@ -211,6 +211,11 @@ ends.
 - **Message flow**: four lanes (Agent A, Bridge, Agent B / B2, Actions); dropped
   messages end in ✕, repeats show ↺ *repeat* and *stored reply returned*.
   Hover a cell for its full text.
+- **Replay check** (above the event log): one click rebuilds every task from the
+  log alone and says whether it matches the database ("The log (1058 events)
+  alone rebuilds all 67 tasks and matches the database"), with a state hash
+  that does not change on a second run. Protection rows in the log show their
+  `rule` and the reason in words.
 - **Event log**: a table with fixed columns (seq, time, type, actor, task, data),
   a sticky header and ellipsis. Click a row (or press Enter) to expand the full
   event. Filters by dialog, task, type group (lifecycle, protection, health,
