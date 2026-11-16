@@ -50,6 +50,7 @@ EXTRAS = {
     "x5": "test_x5_",
     "x6": "test_x6_",
     "x7": "test_x7_",
+    "x8": "test_x8_",
 }
 # Dashboard selection -> pytest arguments. World tests may run in watch mode.
 TEST_SELECTIONS: dict[str, list[str]] = {
@@ -107,6 +108,7 @@ class Proc:
     healthy: bool = False  # set once /health answered after the last start
     crashes: int = 0  # crashes seen since the last reset
     counted: Any = None  # the Popen whose crash was already counted
+    last_crash: dict[str, Any] | None = None  # {"at": epoch seconds, "exit_code": int}
     restart_pending: bool = False
     env: dict[str, str] = field(default_factory=dict)  # per-start overrides
     log_file: Any = None
@@ -121,6 +123,15 @@ class Proc:
             return "stopped"
         return "crashed"
 
+    def note_crash(self) -> bool:
+        """Count a crash of the current process once; True the first time it is seen."""
+        if self.status() != "crashed" or self.counted is self.popen:
+            return False
+        self.counted = self.popen
+        self.crashes += 1
+        self.last_crash = {"at": time.time(), "exit_code": self.popen.poll()}
+        return True
+
     def describe(self) -> dict[str, Any]:
         running = self.status() in ("running", "starting")
         return {
@@ -133,6 +144,7 @@ class Proc:
             "exit_code": self.popen.poll() if self.popen else None,
             "env": dict(self.env),
             "crashes": self.crashes,
+            "last_crash": self.last_crash,
         }
 
 
@@ -272,6 +284,7 @@ class Supervisor:
     async def _start(self, proc: Proc) -> None:
         if proc.status() in ("running", "starting"):
             return
+        proc.note_crash()
         await self._wait_port_free(proc)
         log_dir = self.settings.log_dir
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -343,6 +356,7 @@ class Supervisor:
     async def restart(self, name: str, env: dict[str, str] | None) -> dict[str, Any]:
         proc = self.get(name)
         async with self.lock:
+            proc.note_crash()  # it may have crashed between two monitor ticks
             if proc.status() in ("running", "starting"):
                 proc.counted = proc.popen  # our own kill is part of the restart, not a crash
             await self._kill(proc)
@@ -364,6 +378,7 @@ class Supervisor:
                 await self._wait_port_free(proc)
                 proc.env = {}
                 proc.crashes = 0
+                proc.last_crash = None
             self.wipe_data()
             self.world_env = dict(env)
             if keep_running:
@@ -399,9 +414,7 @@ class Supervisor:
             for proc in self.procs.values():
                 if proc.status() != "crashed":
                     continue
-                if proc.counted is not proc.popen:
-                    proc.counted = proc.popen
-                    proc.crashes += 1
+                if proc.note_crash():
                     log.info("%s crashed (exit %s)", proc.name, proc.popen.poll())
                 # Checked every tick, not only when the crash is first seen: a crash that
                 # happens while an earlier auto-restart is still running is not lost.

@@ -89,3 +89,16 @@ def test_restart_is_not_a_crash_but_a_kill_is_auto_restarted(world):
         ),
         timeout=10,
     )
+
+
+def test_a_crash_is_counted_and_timed_even_when_restarted_at_once(world):
+    # Regression: the monitor looks every 0.1 s, so a crash followed at once by a
+    # restart (S4 does exactly that) used to go uncounted and unseen by the dashboard.
+    world.supervisor.restart("agent_b", env={"CRASH_AT": "after_pay_call"})
+    world.agent_a.message("pay ₹40 to the bakery", msg_id="crash-count")
+    wait_until(lambda: world.supervisor.state("agent_b") == "crashed", timeout=10, every=0.01)
+    world.supervisor.restart("agent_b")
+    s = world.supervisor.status()["agent_b"]
+    assert s["crashes"] == 1
+    assert s["last_crash"]["exit_code"] not in (None, 0)
+    assert s["last_crash"]["at"] > 0

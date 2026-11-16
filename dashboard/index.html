@@ -200,6 +200,34 @@
       <div class="tiles four" id="test-summary"></div>
     </section>
 
+    <section id="watch" class="watch hidden" aria-label="Watching a test live">
+      <header class="panel watch-head">
+        <div class="watch-heading">
+          <h2 id="watch-title">Watching</h2>
+          <p class="watch-goal" id="watch-goal"></p>
+        </div>
+        <span id="watch-status" class="status"></span>
+        <span id="watch-clock" class="hint"></span>
+        <button id="watch-close">Back to all tests</button>
+      </header>
+      <div class="watch-grid">
+        <section class="panel watch-col" aria-label="Test phases">
+          <header class="panel-head"><h2>Test phases</h2><small>what the test is doing</small></header>
+          <div id="watch-phases" class="watch-phases"></div>
+        </section>
+        <section class="panel watch-col" aria-label="System now">
+          <header class="panel-head"><h2>System now</h2><small>live from the demo world</small></header>
+          <div id="watch-procs" class="watch-procs"></div>
+          <div id="watch-tasks" class="watch-tasks"></div>
+          <div id="watch-ledger" class="tiles"></div>
+        </section>
+        <section class="panel watch-col" aria-label="What is happening">
+          <header class="panel-head"><h2>What is happening</h2><small>every event, in plain words</small></header>
+          <ol id="watch-feed" class="watch-feed"></ol>
+        </section>
+      </div>
+    </section>
+
     <section class="tests-grid">
       <div id="tests-table" class="test-groups"></div>
       <div class="tests-side">

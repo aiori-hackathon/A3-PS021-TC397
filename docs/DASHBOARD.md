@@ -161,7 +161,8 @@ press Enter) to open it in the Inspect tab.
   **Run all** and **Chaos run** as secondary buttons.
 - One card per group (*Official (S1–S5)*, *Baseline*, *Extra*, *Interop*,
   *Rules*, *Mutation*). Each row: ID, name, status badge (`PASS`, `FAIL`,
-  `TIMEOUT`, `RUNNING` with a pulsing dot, `NOT RUN`) and one **Run** button.
+  `TIMEOUT`, `RUNNING` with a pulsing dot, `NOT RUN`), a black **Watch** button
+  for world tests (S*, X*, I3, M1) and a **Run** button (fast mode).
   A **⋯** menu on the row holds **Evidence file** and **Replay in Inspect**.
 - **Protection switch**: `Dedup protection: ON / OFF (testing only)`. Off
   resets the demo world with `DISABLE_DEDUP=1`; the whole page gets the
@@ -172,6 +173,31 @@ press Enter) to open it in the Inspect tab.
   restored after a page reload.
 - **Metrics** from `GET /metrics` as a two-column list, including recovery time
   versus baseline; **Test output** in its own card.
+
+### Watch a test live
+
+**Watch** on a row, or any run started with the **Watch** mode toggle (for
+example *Run official five*), replaces the test list with a live view of that
+run until **Back to all tests**. The test runs against the demo world at demo
+speed, so everything below is real, and it all stays on screen after the run
+ends.
+
+- **Header**: the test, one line on what it proves, `RUNNING` / `PASS` / `FAIL`
+  and the elapsed time.
+- **Test phases**: one block per test of the run, its phases (the test's
+  `world.caption` lines, from `test_step` events) ticked off as they pass, then
+  a verdict card: the status and the numbers the test recorded
+  (`summary.json`), in words, e.g. *"The retry got the original receipt back"*,
+  *"Recovered in 217 ms"*.
+- **System now**: each process up or crashed, the run's tasks with their
+  lifecycle stepper, and ledger tiles (payments, messages, bookings, keys
+  performed twice).
+- **What is happening**: every bridge event in plain words, ordered by when it
+  happened, e.g. *"Agent B crashed (exit code 1)"*, *"agent_b resumed task 1
+  (fence 2): step 3/5 (pay) next; done: parse, plan"*, *"Duplicate side effect
+  blocked … original receipt kept"*. Phases are black rows; protection at work
+  is blue; trouble is amber or red. Crashes come from the supervisor's
+  `last_crash`, so one followed at once by a restart is still shown.
 
 ## Inspect tab
 

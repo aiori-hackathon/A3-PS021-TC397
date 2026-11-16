@@ -337,6 +337,7 @@ got stuck).
 | Timeout factor | 1 | 5 |
 | Reset | Full wipe of `data/test` | Full wipe of `data/demo` (demo data is disposable) |
 | Captions | Off | Each phase posts a `test_step` event via `/annotate` |
+| Seen in | Test output only | The dashboard's Watch view: phases, live system, events in words, verdict |
 
 The test code is identical in both modes. Captions are a no-op in fast mode:
 

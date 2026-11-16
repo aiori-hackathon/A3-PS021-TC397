@@ -11,7 +11,7 @@ const S = {
   ledger: [], chat: [], a: null, b: null, b2: null,
   crashedAt: {}, chatCount: 0, captionAt: 0,
   selectedTask: "", mode: "fast",
-  run: null, runSelect: null, testStatus: {}, results: [], chaos: null, chaosFinal: null,
+  run: null, runSelect: null, testStatus: {}, results: [], chaos: null, chaosFinal: null, watch: null,
   replay: { events: [], timer: null },
   dlgSeen: new Set(), dlgOpen: new Set(), evOpen: new Set(),
   err: { bridge: false, actions: false, agentA: false, supervisor: false },
@@ -31,15 +31,16 @@ const TESTS = [
   ["Extra", [
     ["x1", "Uncertain side-effect outcome"], ["x2", "Slow, not dead, worker"],
     ["x3", "Orchestrator crashes after creating tasks"], ["x4", "Retry limit"],
-    ["x5", "Cancel before side effect"], ["x6", "Dependency fails"], ["x7", "Duplicate dispatch"]]],
+    ["x5", "Cancel before side effect"], ["x6", "Dependency fails"], ["x7", "Duplicate dispatch"],
+    ["x8", "Crash asks the user, then continues"]]],
   ["Interop", [["i3", "Cross-adapter correlation"]]],
   ["Rules", [["rules", "R1–R4: invalid transition, schema, stale fence, reused key"]]],
   ["Mutation", [["m1", "M1: protection off must show duplicates"]]],
 ];
 const SELECTION_IDS = {
   official: ["s1", "s2", "s3", "s4", "s5"],
-  extra: ["x1", "x2", "x3", "x4", "x5", "x6", "x7"],
-  all: ["s0", "s1", "s2", "s3", "s4", "s5", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "i3", "rules"],
+  extra: ["x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8"],
+  all: ["s0", "s1", "s2", "s3", "s4", "s5", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "i3", "rules"],
   c1: ["c1"],
 };
 
@@ -138,6 +139,7 @@ function addEvent(e) {
     for (const old of S.events.splice(0, 1000)) S.seen.delete(old.seq);
   }
   S.lastSeq = Math.max(S.lastSeq, e.seq);
+  watchEvent(e);
   if (e.type === "test_step" && Date.now() - Date.parse(e.ts) < 20000) {  // not a caption replayed from history
     $("caption-text").textContent = e.data.text;
     $("caption").classList.remove("hidden");
@@ -690,7 +692,8 @@ function testRow(id, name) {
     : "<span></span>";
   return `<div class="test-row"><span class="tid">${esc(id.toUpperCase())}</span><span class="tname">${esc(name)}</span>` +
     `<span class="status ${st.replace(" ", "_")}">${esc(st)}</span>` +
-    `<button class="run" data-run="${esc(id)}" aria-label="Run ${esc(id.toUpperCase())}">Run</button>${menu}</div>`;
+    `<span class="run-pair">${WORLD_TEST.test(id) ? `<button class="run watch-btn" data-watch="${esc(id)}" aria-label="Watch ${esc(id.toUpperCase())} live">Watch</button>` : ""}` +
+    `<button class="run" data-run="${esc(id)}" aria-label="Run ${esc(id.toUpperCase())}">Run</button></span>${menu}</div>`;
 }
 
 function renderTests() {
@@ -721,7 +724,7 @@ function renderTests() {
   } else if (!run) {
     $("run-output").textContent = "Output appears here while tests run.";
   }
-  for (const b of document.querySelectorAll("[data-run], #btn-run-official, #btn-run-all, #btn-run-chaos")) {
+  for (const b of document.querySelectorAll("[data-run], [data-watch], #btn-run-official, #btn-run-all, #btn-run-chaos")) {
     b.disabled = !!(run && run.state === "running") || !S.supervisorUp;
   }
 
@@ -792,8 +795,8 @@ async function loadResults() {
   renderReplayRuns();
 }
 
-async function runTests(select) {
-  const mode = ["all", "rules", "c1"].includes(select) ? "fast" : S.mode;
+async function runTests(select, forceMode = null) {
+  const mode = ["all", "rules", "c1"].includes(select) ? "fast" : forceMode || S.mode;
   const protection = !S.world || S.world.protection;
   const r = await api(port("supervisor"), "/tests/run", { method: "POST", body: { mode, select, protection }, timeout: 10000 });
   if (!r.ok) { toast(`Could not start tests: ${r.data ? r.data.detail : r.error}`); return; }
@@ -804,7 +807,252 @@ async function runTests(select) {
   if (select === "m1") { delete S.testStatus.m1_s1; delete S.testStatus.m1_s4; }
   if (select === "rules") for (const id of ["r1", "r2", "r3", "r4"]) delete S.testStatus[id];
   toast(`Started ${select} in ${mode} mode${protection ? "" : " with protection OFF"}`);
+  if (mode === "watch") openWatch(select);
   render();
+}
+
+// --- Watch view: one test, live (docs/DASHBOARD.md#watch-a-test-live) ------------------------
+
+const WORLD_TEST = /^(s\d|x\d|i3|m1)$/;
+const TEST_GOALS = {
+  s0: "Baseline: a payment and a message with no faults. Expect one payment and one message.",
+  s1: "The reply to Agent A's dialog.create is lost, so Agent A sends it again. Expect one dialog, one task, one payment.",
+  s2: "Two workers grab the same task at the same moment. Exactly one may win; the payment happens once.",
+  s3: "Agent B crashes just before paying. The task resumes from its last checkpoint and pays one time only.",
+  s4: "Agent B crashes right after paying, before telling the bridge. The retry reuses the same key: still one payment, same receipt.",
+  s5: "The bridge is hard-killed while Agent A's link is cut. After the restart the same task finishes; nothing is lost or repeated.",
+  x1: "The payment's reply from the actions service is lost. The worker retries with the same key and gets the original receipt.",
+  x2: "Agent B is slow, not dead. Its heartbeats keep the lease, so nobody else takes the task.",
+  x3: "Agent A crashes right after creating the dialog. On restart it retries the create and gets the same dialog back.",
+  x4: "Agent B crashes at the same point every time. After the retry limit the task fails, with no payment.",
+  x5: "The user cancels before confirming; a task whose payment already happened can never be cancelled.",
+  x6: "The first task fails, so the task that depends on it is cancelled and never claimed.",
+  x7: "One of Agent B's checkpoints is delivered twice. The bridge's inbox absorbs the repeat.",
+  x8: "Agent B crashes mid-task. The task is held, the user is asked, and on Continue it resumes from the progress report.",
+  i3: "The same task seen through the MCP-style and the A2A-style format keeps one ID and one state.",
+  m1: "Protection is switched off on purpose. S1 and S4 must now show duplicates, which proves the tests can catch them.",
+};
+const testName = (id) => (TESTS.flatMap(([, items]) => items).find(([t]) => t === id) || [id, id])[1];
+
+function watchIds(select) {
+  return (SELECTION_IDS[select] || [select]).filter((id) => WORLD_TEST.test(id));
+}
+
+function openWatch(select) {
+  S.watch = {
+    select, ids: watchIds(select), started: Date.now(), startedIso: new Date().toISOString(),
+    current: null, items: [], phases: {}, verdicts: {}, procs: {}, taskIdx: {}, lastFeed: "",
+  };
+  $("watch").classList.remove("hidden");
+  document.querySelector(".tests-grid").classList.add("hidden");
+  watchTrack();
+}
+
+function closeWatch() {
+  S.watch = null;
+  $("watch").classList.add("hidden");
+  document.querySelector(".tests-grid").classList.remove("hidden");
+  render();
+}
+
+// `at` (ms) orders the feed by when it happened, not when the browser heard of it.
+function watchPush(kind, text, tone = "", at = Date.now()) {
+  const w = S.watch;
+  w.items.push({ kind, text, tone, at, t: hhmmss(new Date(at).toISOString()).slice(0, 8), test: w.current });
+  w.items.sort((a, b) => a.at - b.at);
+  if (w.items.length > 600) w.items.splice(0, 100);
+}
+
+// Which test of the run is going on now; announce each new one in the feed.
+function watchTrack() {
+  const w = S.watch;
+  if (!w) return;
+  const now = w.ids.find((id) => statusOf(id) === "RUNNING") || null;
+  if (now && now !== w.current) {
+    w.current = now;
+    w.phases[now] = w.phases[now] || [];
+    watchPush("head", `${now.toUpperCase()} · ${testName(now)}`);
+  }
+  for (const id of w.ids) {
+    const st = statusOf(id);
+    if (!["RUNNING", "NOT RUN"].includes(st) && !w.verdicts[id]) loadVerdict(id, st);
+  }
+}
+
+async function loadVerdict(id, status) {
+  const w = S.watch;
+  w.verdicts[id] = { status, numbers: null };
+  watchPush("head", `${id.toUpperCase()} finished: ${status}`, BAD_STATUS.has(status) ? "bad" : "ok");
+  const folder = id === "m1" ? "m1_s4" : id;
+  const r = await api(port("supervisor"), `/results/${encodeURIComponent(S.run.run_id)}/${folder}/summary.json`);
+  if (r.ok && S.watch === w) { w.verdicts[id].numbers = r.data.numbers; renderWatch(); }
+}
+
+// Every bridge event as one plain sentence (and a tone for its colour), or null to skip it.
+function narrate(e) {
+  const d = e.data || {};
+  const w = S.watch;
+  if (e.type === "task_created") w.taskIdx[e.task_id] = d.index;
+  const task = e.task_id ? `task ${w.taskIdx[e.task_id] || (S.byId[e.task_id] || {}).index || short(e.task_id)}` : "";
+  const fence = d.fence != null ? ` (fence ${d.fence})` : "";
+  switch (e.type) {
+    case "dialog_created": return [`Agent A turned “${d.text}” into ${d.task_ids.length} task(s)`, ""];
+    case "task_created": return [`${task} created: ${d.intent}${d.needs_confirmation ? ", needs confirmation" : ""}`, ""];
+    case "confirmed": return [`${task} confirmed`, ""];
+    case "state_changed":
+      return [`${task}: ${d.from} → ${d.to}`, { COMPLETED: "ok", SUSPENDED: "warn", FAILED: "bad", CANCELLED: "warn" }[d.to] || ""];
+    case "claimed": return [`${e.actor} claimed ${task}${fence}`, ""];
+    case "resumed": case "reclaimed":
+      return [`${e.actor} ${e.type} ${task}${fence}${d.progress ? `: ${d.progress}` : ""}`, "ok"];
+    case "checkpoint": return [`${e.actor} finished step “${d.step}” of ${task}${d.replaced ? " (again, replaced)" : ""}`, ""];
+    case "effect_intent": return [`${e.actor} is about to perform ${d.effect_key.split(":").pop()} with key ${d.effect_key}${d.repeat ? " (same key again)" : ""}`, ""];
+    case "effect_committed":
+      return d.replayed
+        ? [`Same key seen again: the actions service returned the original receipt ${d.receipt_id}; nothing was paid twice`, "guard"]
+        : [`Side effect done: receipt ${d.receipt_id}`, "ok"];
+    case "duplicate_rejected": return [`Duplicate side effect blocked for ${d.effect_key}: original receipt kept`, "guard"];
+    case "duplicate_request": return [`Repeat of ${d.request_id} absorbed: the bridge returned its stored reply`, "guard"];
+    case "stale_fence_blocked": return [`Late write from ${e.actor} blocked: fence ${d.fence} is older than ${d.current_fence}`, "guard"];
+    case "invalid_transition_rejected": return [`${d.op} refused: ${d.from} cannot go to ${d.to}`, "guard"];
+    case "request_id_conflict": return [`Same request ID with a different body refused`, "guard"];
+    case "schema_rejected": return [`Message with an unsupported schema refused`, "guard"];
+    case "lease_expired": return [`${d.owner} stopped responding: its lease on ${task} expired during ${d.from}`, "warn"];
+    case "held": return [`${task} held: no worker may take it until the user decides`, "warn"];
+    case "released": return [`${task} released: the user chose Continue`, "ok"];
+    case "agent_unresponsive": return [`${d.agent_id} has been silent for ${d.silent_for_s} s`, "warn"];
+    case "agent_registered": return [`${e.actor} connected to the bridge`, ""];
+    case "max_attempts_reached": return [`${task} used all ${d.max_attempts} attempts`, "bad"];
+    case "completed": return [`${task} completed`, "ok"];
+    case "failed": return [`${task} failed${d.reason ? ` (${d.reason})` : ""}`, "bad"];
+    case "cancelled": return [`${task} cancelled${d.reason ? ` (${d.reason})` : ""}`, "warn"];
+    case "fault_rule_set": return d.change === "add" ? [`Trap set: ${d.action} on the ${d.link} link${d.note ? ` (${d.note})` : ""}`, "warn"] : null;
+    case "fault_applied": return [`Trap fired: ${d.action} on the ${d.link} link${d.op ? ` for ${d.op}` : ""}`, "warn"];
+    case "bridge_started":
+      return d.previous_last_seq ? [`Bridge restarted: ${d.recovered_tasks} open task(s) recovered from its database`, "ok"] : null;
+    default: return null;
+  }
+}
+
+function watchEvent(e) {
+  const w = S.watch;
+  if (!w || e.ts < w.startedIso) return;
+  if (e.type === "test_step") {
+    const cur = w.current || w.ids[0];
+    (w.phases[cur] = w.phases[cur] || []).push(e.data.text);
+    watchPush("phase", e.data.text, "", Date.parse(e.ts));
+    return;
+  }
+  const said = narrate(e);
+  if (said) watchPush("event", said[0], said[1], Date.parse(e.ts));
+}
+
+// Process crashes come from the supervisor, not the bridge. `last_crash` keeps a crash
+// that was restarted again before the next poll, with the time it happened.
+function watchProcs() {
+  const w = S.watch;
+  if (!w) return;
+  for (const [name, p] of Object.entries(S.status)) {
+    const crash = p.last_crash;
+    const known = w.procs[name];
+    if (!crash || crash.at * 1000 < w.started || (known && known.at === crash.at)) continue;
+    w.procs[name] = crash;
+    const who = SVC_LABEL[name] || name;
+    watchPush("event", `${who} crashed (exit code ${crash.exit_code})`, "bad", crash.at * 1000);
+  }
+}
+
+const VERDICT_WORDS = {
+  task_id_preserved: (v) => (v ? "Task ID kept the same throughout" : "Task ID changed"),
+  side_effects: (v) => `Side effects in the ledger: ${v}`,
+  same_receipt: (v) => (v ? "The retry got the original receipt back" : "A different receipt was issued"),
+  recovery_ms: (v) => (v == null ? null : `Recovered in ${v} ms`),
+  dialogs_for_msg: (v) => `Dialogs for the one message: ${v}`,
+  duplicates_rejected: (v) => (typeof v === "object"
+    ? `Duplicates absorbed: ${v.requests ?? v.claims ?? 0} request(s)${v.effects != null ? `, ${v.effects} side effect(s)` : ""}`
+    : `Duplicates absorbed: ${v}`),
+  claims_refused: (v) => `Second claim refused: ${v}`,
+  winner: (v) => `Winner: ${v}`,
+  fence: (v) => `Final fence: ${v}`,
+  attempt: (v) => `Attempts: ${v}`,
+  seq_continued: (v) => (v ? "Event numbers continued without a gap" : "Event numbers had a gap"),
+  recovered_tasks: (v) => `Tasks recovered after the restart: ${v}`,
+  avg_task_ms: (v) => `Average task time: ${v} ms`,
+  events_per_task: (v) => `Events per task: ${v}`,
+  ledger_rows: (v) => `Ledger rows: ${v}`,
+};
+
+function verdictHtml(id) {
+  const v = S.watch.verdicts[id];
+  if (!v) return "";
+  const n = v.numbers || {};
+  const lines = Object.entries(n).filter(([k]) => k !== "key_number").map(([k, val]) =>
+    (VERDICT_WORDS[k] ? VERDICT_WORDS[k](val) : `${k.replace(/_/g, " ")}: ${typeof val === "object" ? JSON.stringify(val) : val}`)).filter(Boolean);
+  const bad = BAD_STATUS.has(v.status);
+  return `<div class="verdict ${bad ? "bad" : ""}"><b>${esc(v.status)}${n.key_number ? ` · ${esc(n.key_number)}` : ""}</b>` +
+    (lines.length ? `<ul>${lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : '<span class="hint">Loading the recorded numbers…</span>') + "</div>";
+}
+
+function renderWatch() {
+  const w = S.watch;
+  if (!w) return;
+  const run = S.run;
+  const many = w.ids.length > 1;
+  const cur = w.current || w.ids[0];
+  $("watch-title").textContent = many
+    ? `Watching ${w.select} · ${cur.toUpperCase()} ${testName(cur)}`
+    : `Watching ${cur.toUpperCase()} · ${testName(cur)}`;
+  $("watch-goal").textContent = TEST_GOALS[cur] || "";
+  const running = run && run.state === "running";
+  const st = running ? "RUNNING" : run ? (run.exit_code === 0 ? "PASS" : "FAIL") : "";
+  const stEl = $("watch-status");
+  stEl.textContent = st;
+  stEl.className = `status ${st}`;
+  const secs = Math.round(((running ? Date.now() : (run && run.finished ? run.finished * 1000 : Date.now())) - w.started) / 1000);
+  $("watch-clock").textContent = `${secs} s`;
+
+  const phases = w.ids.filter((id) => w.phases[id] || w.verdicts[id] || id === cur).map((id) => {
+    const list = w.phases[id] || [];
+    const done = !!w.verdicts[id];
+    const items = list.map((p, i) => {
+      const cls = done || i < list.length - 1 ? "done" : "now";
+      return `<li class="${cls}">${esc(p)}</li>`;
+    }).join("") || '<li class="waiting">Starting the test world…</li>';
+    return `<section class="watch-test"><h3>${esc(id.toUpperCase())} · ${esc(testName(id))}</h3>` +
+      `<ol class="phase-list">${items}</ol>${verdictHtml(id)}</section>`;
+  }).join("");
+  $("watch-phases").innerHTML = phases || '<p class="watch-empty">Waiting for the test to start…</p>';
+
+  const procs = ["agent_a", "bridge", "agent_b", "agent_b2", "actions"].filter((n) => S.status[n] && (n !== "agent_b2" || S.status[n].status !== "stopped"))
+    .map((n) => {
+      const s2 = S.status[n].status;
+      const tone = s2 === "running" ? "ok" : s2 === "crashed" ? "bad" : "warn";
+      return `<span class="proc-chip ${tone}"><span class="dot"></span>${esc(SVC_LABEL[n] || n)} · ${esc(s2 === "running" ? "up" : s2)}</span>`;
+    }).join("");
+  $("watch-procs").innerHTML = procs;
+
+  const tasks = S.tasks.slice(-4).map((t) =>
+    `<div class="watch-task"><div class="wt-head"><b>Task ${t.index} · ${esc(t.intent)}</b>` +
+    `<span class="state ${STATE_TONE[t.state] || ""}">${esc(t.state)}</span></div>${stepper(t)}` +
+    `<span class="wt-meta">${taskMeta(t)}</span></div>`).join("");
+  $("watch-tasks").innerHTML = tasks || '<p class="watch-empty">No task yet.</p>';
+
+  const count = (a) => S.ledger.filter((r) => r.action === a).length;
+  const perKey = {};
+  for (const r of S.ledger) perKey[r.idempotency_key] = (perKey[r.idempotency_key] || 0) + 1;
+  const dups = Object.values(perKey).filter((n) => n > 1).length;
+  const tile = (n, l, cls = "") => `<div class="tile ${cls}"><span class="n">${n}</span><span class="l">${l}</span></div>`;
+  $("watch-ledger").innerHTML = tile(count("pay"), "payments made") + tile(count("send"), "messages sent") +
+    tile(count("reserve"), "bookings made") + tile(dups, "keys performed twice", dups ? "bad" : "");
+
+  const feed = w.items.map((it) =>
+    `<li class="${it.kind === "event" ? it.tone : it.kind}"><span class="t">${esc(it.t)}</span><span>${esc(it.text)}</span></li>`).join("");
+  const el = $("watch-feed");
+  if (feed !== w.lastFeed) {
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 40;
+    el.innerHTML = feed || '<li><span></span><span class="watch-empty">Events appear here as they happen.</span></li>';
+    w.lastFeed = feed;
+    if (atBottom) el.scrollTop = el.scrollHeight;
+  }
 }
 
 // --- rendering: Inspect tab ----------------------------------------------------------------
@@ -1004,6 +1252,7 @@ function render() {
     renderChat(); renderAgents(); renderLedger(); renderLinks(); renderDialogs();
   } else if (tab === "tests") {
     renderTests();
+    watchTrack(); watchProcs(); renderWatch();
   } else {
     renderInspectOptions(); renderEventLog(); renderFlow();
   }
@@ -1160,11 +1409,14 @@ function bind() {
     poll();
   });
   $("btn-run-official").addEventListener("click", () => runTests("official"));
+  $("watch-close").addEventListener("click", closeWatch);
   $("btn-run-all").addEventListener("click", () => runTests("all"));
   $("btn-run-chaos").addEventListener("click", () => runTests("c1"));
   $("tests-table").addEventListener("click", (ev) => {
     const run = ev.target.closest("button[data-run]");
     if (run) runTests(run.dataset.run);
+    const watch = ev.target.closest("button[data-watch]");
+    if (watch) runTests(watch.dataset.watch, "watch");
     const rep = ev.target.closest("button[data-replay]");
     if (rep) {
       for (const m of document.querySelectorAll(".rowmenu[open]")) m.open = false;

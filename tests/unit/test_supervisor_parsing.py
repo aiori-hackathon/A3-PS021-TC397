@@ -19,3 +19,18 @@ def test_test_ids_match_the_evidence_folders():
     assert (
         supervisor.test_id_of("test_retry_with_nothing_sent_yet") == "retry_with_nothing_sent_yet"
     )
+
+
+def test_every_extra_test_can_be_started_and_is_listed_on_the_dashboard():
+    # Regression: X8 was added to tests/test_extras.py but not to these two lists.
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    in_tests = set(
+        re.findall(r"^def test_(x\d+)_", (root / "tests/test_extras.py").read_text(), re.MULTILINE)
+    )
+    assert in_tests == set(supervisor.EXTRAS)
+    app_js = (root / "dashboard/app.js").read_text()
+    on_dashboard = set(re.findall(r'\["(x\d+)", "', app_js))
+    assert in_tests == on_dashboard

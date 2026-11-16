@@ -409,7 +409,7 @@ details[open] > summary::before { transform: rotate(45deg); }
 .test-groups, .tests-side { display: flex; flex-direction: column; gap: var(--s4); min-width: 0; }
 .test-card { display: flex; flex-direction: column; gap: var(--s2); }
 .test-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
-.test-row { display: grid; grid-template-columns: 52px minmax(0, 1fr) 112px 72px 40px; gap: var(--s3); align-items: center; min-height: 48px; padding: 0 var(--s2); border-top: 1px solid var(--border); }
+.test-row { display: grid; grid-template-columns: 52px minmax(0, 1fr) 112px auto 40px; gap: var(--s3); align-items: center; min-height: 48px; padding: 0 var(--s2); border-top: 1px solid var(--border); }
 .test-row:first-of-type { border-top: 0; }
 .test-row:hover { background: var(--fill); border-radius: var(--r-input); }
 .tid { font-family: var(--mono); font-weight: 700; }
@@ -422,6 +422,8 @@ details[open] > summary::before { transform: rotate(45deg); }
 .status.RUNNING::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.25; } }
 .test-row .run { min-height: var(--control-h); padding: 0 var(--s3); }
+.test-row .run-pair { display: flex; gap: var(--s2); }
+.test-row .run.watch-btn { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
 .rowmenu { position: relative; }
 .rowmenu > summary { list-style: none; cursor: pointer; width: var(--control-h); height: var(--control-h); display: grid; place-items: center; border-radius: 50%; font-size: 20px; line-height: 1; color: var(--slate); transition: background var(--ease), color var(--ease); }
 .rowmenu > summary:hover, .rowmenu[open] > summary { background: var(--fill); color: var(--ink); }
@@ -521,3 +523,51 @@ pre.code { background: var(--fill); border: 1px solid var(--border); border-radi
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* ---- Watch view: one test, live (docs/DASHBOARD.md#watch-a-test-live) ---- */
+.watch { display: grid; gap: var(--s4); }
+.watch-head { display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap; }
+.watch-heading { flex: 1 1 320px; min-width: 0; }
+.watch-heading h2 { font-size: var(--fs-title); }
+.watch-goal { margin: var(--s1) 0 0; color: var(--slate); }
+.watch-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: var(--s4); align-items: start; }
+.watch-col { display: grid; gap: var(--s3); min-height: 420px; align-content: start; }
+.watch-col .panel-head small { color: var(--slate); font-weight: 400; }
+.watch-phases { display: grid; gap: var(--s4); max-height: 62vh; overflow-y: auto; }
+.watch-test h3 { margin: 0 0 var(--s2); font-size: var(--fs-card); }
+.watch-test.past { opacity: 1; }
+.phase-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); counter-reset: phase; }
+.phase-list li { counter-increment: phase; display: grid; grid-template-columns: 28px 1fr; gap: var(--s2); align-items: start; }
+.phase-list li::before { content: counter(phase); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-label); font-weight: 700; background: var(--fill); color: var(--slate); }
+.phase-list li.done::before { content: "✓"; background: var(--green-tint); color: var(--green); }
+.phase-list li.now::before { background: var(--ink); color: var(--on-ink); }
+.phase-list li.now { font-weight: 650; }
+.phase-list li.waiting { color: var(--slate); }
+.verdict { margin-top: var(--s3); border-radius: var(--r-input); padding: var(--s3); background: var(--green-tint); border: 1px solid var(--green); }
+.verdict.bad { background: var(--red-tint); border-color: var(--red); }
+.verdict b { display: block; margin-bottom: var(--s2); }
+.verdict ul { margin: 0; padding-left: var(--s4); display: grid; gap: var(--s1); }
+.watch-procs { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.proc-chip { display: inline-flex; align-items: center; gap: var(--s2); padding: var(--s1) var(--s3); border-radius: var(--r-pill); background: var(--fill); font-weight: 600; }
+.proc-chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--grey); }
+.proc-chip.ok .dot { background: var(--green); }
+.proc-chip.bad { background: var(--red-tint); color: var(--red); }
+.proc-chip.bad .dot { background: var(--red); }
+.proc-chip.warn .dot { background: var(--amber); }
+.watch-tasks { display: grid; gap: var(--s3); }
+.watch-task { border: 1px solid var(--border); border-radius: var(--r-input); padding: var(--s3); display: grid; gap: var(--s2); }
+.watch-task .wt-head { display: flex; justify-content: space-between; gap: var(--s2); align-items: center; }
+.watch-task .wt-meta { color: var(--slate); }
+.watch-feed { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s1); max-height: 62vh; overflow-y: auto; }
+.watch-feed li { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: var(--s2); padding: var(--s2) var(--s2); border-radius: var(--r-tag); border-left: 3px solid transparent; }
+.watch-feed li .t { font-family: var(--mono); color: var(--slate); font-size: var(--fs-label); padding-top: 2px; }
+.watch-feed li.phase { background: var(--ink); color: var(--on-ink); border-left-color: var(--ink); font-weight: 650; }
+.watch-feed li.phase .t { color: var(--on-ink); }
+.watch-feed li.head { background: var(--fill); font-weight: 700; }
+.watch-feed li.ok { border-left-color: var(--green); }
+.watch-feed li.warn { border-left-color: var(--amber); background: var(--amber-tint); }
+.watch-feed li.bad { border-left-color: var(--red); background: var(--red-tint); }
+.watch-feed li.guard { border-left-color: var(--blue); background: var(--blue-tint); }
+.watch-empty { color: var(--slate); }
+@media (max-width: 1099px) { .watch-grid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .watch-feed { scroll-behavior: auto; } }

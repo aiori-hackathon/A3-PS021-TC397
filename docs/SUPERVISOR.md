@@ -66,6 +66,10 @@ even while the bridge is down.
   as a crash; the kill that `/restart` does itself does not. While `AUTO_RESTART` is
   on, every crashed agent with no restart pending gets one, including an agent
   that crashes again while an earlier auto-restart is still in progress.
+  A crash is also counted when a start or restart replaces the dead process, so a
+  crash followed at once by a restart (S4 does that) is never missed.
+  `last_crash` is `{at, exit_code}` for the most recent one (`at` in epoch
+  seconds), which the dashboard's Watch view uses to place it in its timeline.
 - `CRASH_MODE=once`: `CRASH_AT` is removed from the environment on the next
   restart. `CRASH_MODE=always`: kept (retry-limit test X4).
 
