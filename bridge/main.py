@@ -1,4 +1,4 @@
-"""FastAPI app for the Dialog Bridge: routes, WebSocket, background jobs. See docs/BRIDGE.md.
+"""FastAPI app for the DialogSpan bridge: routes, WebSocket, background jobs. See docs/BRIDGE.md.
 
 Agents talk to the bridge only through POST /mcp (MCP-style) and POST /a2a
 (A2A-style). Everything else is a read-only or control route for the
@@ -84,7 +84,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title=f"Dialog Bridge ({SCHEMA_VERSION}, an experimental schema)",
+    title=f"DialogSpan ({SCHEMA_VERSION}, an experimental schema)",
     lifespan=lifespan,
 )
 app.add_middleware(

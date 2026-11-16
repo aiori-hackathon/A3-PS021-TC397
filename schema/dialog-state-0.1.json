@@ -886,6 +886,6 @@
       "type": "object"
     }
   },
-  "description": "Experimental schema for the PS-021 Dialog Bridge prototype. Generated from bridge/models.py; do not edit by hand.",
+  "description": "Experimental schema for the PS-021 DialogSpan prototype. Generated from bridge/models.py; do not edit by hand.",
   "title": "dialog-state/0.1-experimental"
 }

@@ -235,7 +235,7 @@ Each of these is designed, not left to chance:
 | Bridge reconnecting | Amber top banner with a spinner and the health pill `Bridge reconnecting` |
 | Bridge restarted | Green banner and a toast: *recovered N tasks; event numbers continue at N* |
 | Protection OFF | Warning banner across the top, red page border, red `OFF` badge in the pill and the Tests tab, duplicate tiles in the ledger |
-| Cannot load at all | A "Can't reach the Dialog Bridge" page with the command to start it and a **Try again** button |
+| Cannot load at all | A "Can't reach DialogSpan" page with the command to start it and a **Try again** button |
 
 ## Live updates
 

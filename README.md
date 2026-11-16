@@ -1,4 +1,4 @@
-# Dialog Bridge — AIORI-3 · PS-021
+# DialogSpan — AIORI-3 · PS-021
 
 **Experimental dialog correlation and recovery across two mock agent adapters.**
 
@@ -30,8 +30,9 @@ durably after restarts, demonstrated across five disconnect/retry scenarios.
 
 ## Our answer in one paragraph
 
-A **Dialog Bridge** sits between two mock agents. It is a Python (FastAPI)
-server with its own SQLite database. Every message from either agent passes
+**DialogSpan** keeps one conversation and its tasks consistent across two mock
+agents. Its core is the **bridge**: a Python (FastAPI) server with its own
+SQLite database that sits between the agents. Every message from either agent passes
 through it. The bridge gives every conversation a `dialog_id` and every unit of
 work a `task_id`, moves tasks through an enforced state machine, stores every
 request's reply so repeats get the same answer, hands out leases and fencing
@@ -45,7 +46,7 @@ and continues the same task, with the same ID, without repeating side effects.
 
 | Process | Demo port | Test port | Role |
 | --- | --- | --- | --- |
-| Dialog Bridge + dashboard | 8000 | 9000 | State, schema, state machine, dedup, leases, events, fault proxy, codecs |
+| DialogSpan bridge + dashboard | 8000 | 9000 | State, schema, state machine, dedup, leases, events, fault proxy, codecs |
 | Agent A — orchestrator | 8001 | 9001 | MCP-style adapter; rule-based intent router; plans and delegates |
 | Agent B — worker | 8002 | 9002 | A2A-style adapter; runs scripted steps; performs side effects |
 | Actions service | 8003 | 9003 | Mock side effects (payment, message, booking) with an idempotent ledger |

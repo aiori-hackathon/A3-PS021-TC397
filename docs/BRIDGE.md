@@ -1,4 +1,4 @@
-# The Dialog Bridge
+# The DialogSpan bridge
 
 The bridge is one FastAPI process. It is the only component that decides task
 state, and the only one whose database must survive for recovery to work.

@@ -408,7 +408,7 @@ def json_schema() -> dict[str, Any]:
         [(m, "validation") for m in EXPORTED_MODELS],
         title=SCHEMA_VERSION,
         description=(
-            "Experimental schema for the PS-021 Dialog Bridge prototype. "
+            "Experimental schema for the PS-021 DialogSpan prototype. "
             "Generated from bridge/models.py; do not edit by hand."
         ),
     )

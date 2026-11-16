@@ -1,4 +1,4 @@
-// Dialog Bridge dashboard (docs/DASHBOARD.md). Plain JavaScript, no libraries, no build step.
+// DialogSpan dashboard (docs/DASHBOARD.md). Plain JavaScript, no libraries, no build step.
 // Data: the bridge's WebSocket for events; everything else polled once a second from
 // the supervisor, the agents, the actions service and the bridge (CORS allows this origin).
 "use strict";
@@ -1500,7 +1500,7 @@ function fatal(message) {
   const box = document.createElement("main");
   box.className = "panel fatal";
   box.setAttribute("role", "alert");
-  box.innerHTML = `<h2>Can't reach the Dialog Bridge</h2><p class="hint">${esc(message)}</p>` +
+  box.innerHTML = `<h2>Can't reach DialogSpan</h2><p class="hint">${esc(message)}</p>` +
     `<p class="hint">Start it with <code>python supervisor.py --mode demo</code>, then try again.</p>` +
     `<button class="primary" id="btn-retry-load">Try again</button>`;
   document.body.appendChild(box);

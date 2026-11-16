@@ -21,7 +21,7 @@ drives the dashboard. Swap halfway if you like.
 | Time | Who | What to show | What to say (key line) |
 | --- | --- | --- | --- |
 | 0:00 | P1 | Title slide | "When agents hand work to each other and something breaks, work gets lost or done twice. Done twice is dangerous when it's a payment." |
-| 0:45 | P1 | Architecture diagram | "Two agents never talk directly. Everything goes through our Dialog Bridge, which keeps every task's state in a database that survives crashes." |
+| 0:45 | P1 | Architecture diagram | "Two agents never talk directly. Everything goes through our DialogSpan bridge, which keeps every task's state in a database that survives crashes." |
 | 1:45 | P2 | Live tab: type *"Pay ₹40 to the bakery and email the receipt to Rahul"* | "The router found two tasks. The email waits for the payment. Notice the same dialog ID on both." |
 | 2:15 | P2 | Confirm; watch both tasks complete; ledger: 1 payment, 1 email | "That's the normal path. Now let's break it." |
 | 3:00 | P2 | Arm crash point *after pay call*; send *"pay ₹40 to the bakery"*; Agent B dies right after paying | "The money moved, but the bridge never heard back. This is the worst moment to crash." |

@@ -1,1 +1,1 @@
-"""Dialog Bridge: the only writer of task state."""
+"""DialogSpan bridge: the only writer of task state."""

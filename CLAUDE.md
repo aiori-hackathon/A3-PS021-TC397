@@ -5,7 +5,7 @@ in this repository. Humans should read the README first.
 
 ## What this project is
 
-A Python prototype for AIORI-3 PS-021: a Dialog Bridge between two scripted
+A Python prototype for AIORI-3 PS-021: DialogSpan, a bridge between two scripted
 mock agent adapters (MCP-style and A2A-style) with an experimental
 dialog-state schema, an enforced task state machine, request deduplication,
 leases with fencing tokens, an idempotent side-effect ledger, durable recovery

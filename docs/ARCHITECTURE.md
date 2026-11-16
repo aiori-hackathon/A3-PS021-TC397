@@ -3,7 +3,7 @@
 ## One-sentence summary
 
 Two mock agents never talk to each other directly: every message goes through
-the **Dialog Bridge**, which owns all state in SQLite, so any process can crash
+the **DialogSpan bridge**, which owns all state in SQLite, so any process can crash
 and the work continues with the same identity and without repeated side effects.
 
 ## System view
@@ -13,7 +13,7 @@ flowchart LR
     U([User / test runner]) -->|chat text| A
     subgraph SUP[Supervisor :8009 - starts, kills, restarts]
         A[Agent A<br/>orchestrator<br/>MCP-style :8001]
-        BR[Dialog Bridge :8000]
+        BR[DialogSpan bridge :8000]
         B[Agent B<br/>worker<br/>A2A-style :8002]
         ACT[Actions service :8003]
     end

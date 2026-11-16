@@ -8,7 +8,7 @@ Plain-language meanings of the terms used in this project.
 | **Adapter** | The part of an agent that speaks a particular protocol style. "Mock adapter" = a simple fake one for testing. |
 | **A2A-style** | Our message format modelled loosely on Google's Agent2Agent protocol: tasks with a status and a context ID. |
 | **Atomic** | Happens completely or not at all; nothing can see it half-done. |
-| **Bridge (Dialog Bridge)** | Our central server that tracks every task and protects against duplicates. |
+| **Bridge (the DialogSpan bridge)** | Our central server that tracks every task and protects against duplicates. |
 | **Checkpoint** | A saved record of "step N is done, here is its output", so work can continue after a crash. |
 | **Claim** | An agent saying "I'll take this task". Only one claim can win. |
 | **Codec** | A translator between a native message format and our shared schema. |
