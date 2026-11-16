@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import config
-from bridge import events, jobs, metrics, proxy, registry, tasks
+from bridge import events, jobs, metrics, proxy, registry, tasks, verify
 from bridge.codecs import a2a_style, mcp_style
 from bridge.db import Database
 from bridge.handlers import Bridge
@@ -341,6 +341,12 @@ def list_agents() -> list[dict[str, Any]]:
 @app.get("/metrics")
 def get_metrics() -> dict[str, Any]:
     return _read(metrics.compute)
+
+
+@app.get("/verify")
+def get_verify() -> dict[str, Any]:
+    """Replay check: rebuild every task from the event log and compare (docs/BRIDGE.md)."""
+    return _read(verify.verify)
 
 
 class Export(BaseModel):

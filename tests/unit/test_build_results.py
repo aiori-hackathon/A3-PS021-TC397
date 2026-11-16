@@ -1,6 +1,7 @@
 """U: RESULTS.md generation from an evidence folder (scripts/build_results.py)."""
 
 import json
+import re
 
 from scripts import build_results
 
@@ -190,3 +191,24 @@ def test_headline_uses_the_comparison_when_present():
         "protection on, **7** with it off (5 of them payments)."
     )
     assert build_results.headline({}) is None
+
+
+def test_replay_line_reports_the_check_or_nothing():
+    c1 = {"replay_ok": True, "replay_events": 1058, "replay_tasks": 67, "replay_hash": "41f89e95"}
+    assert build_results.replay_line(c1) == (
+        "Replay check: the event log (1058 events) alone rebuilds all 67 tasks and matches the"
+        " database (state hash `41f89e95`)."
+    )
+    assert "does NOT match" in build_results.replay_line({**c1, "replay_ok": False})
+    assert build_results.replay_line({}) is None
+
+
+def test_scenario_table_describes_all_five_in_words():
+    lines = build_results.scenario_lines()
+    text = "\n".join(lines)
+    assert lines[0].startswith("| ID | Starting state | Injected failure | Retry behaviour")
+    for sid in ("S1", "S2", "S3", "S4", "S5"):
+        assert f"| {sid} |" in text
+    assert "original receipt" in text  # S4's retry
+    prose = re.sub(r"\bS[1-5]\b", "", text)
+    assert not re.search(r"\d", prose), "numbers belong in the generated tables, not here"

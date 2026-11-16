@@ -250,6 +250,18 @@ def get_receipt(receipt_id: str) -> dict[str, Any]:
     return receipt(row, replayed=False)
 
 
+@app.get("/audit/{key:path}")
+def audit(key: str) -> dict[str, Any]:
+    """Read-only: does the ledger hold this idempotency key? (docs/ACTIONS_SERVICE.md)"""
+    with state.ledger.lock:
+        row = state.ledger.conn.execute(
+            "SELECT * FROM ledger WHERE idempotency_key = ? ORDER BY id LIMIT 1", (key,)
+        ).fetchone()
+    if row is None:
+        return {"key": key, "evidence": "VERIFIED_NOT_EXECUTED", "receipt": None}
+    return {"key": key, "evidence": "VERIFIED_DONE", "receipt": receipt(row, replayed=True)}
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {"ok": True}

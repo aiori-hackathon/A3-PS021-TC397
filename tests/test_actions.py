@@ -74,3 +74,14 @@ def test_ledger_survives_a_restart(tmp_path):
     finally:
         a.close()
         stop_process(proc, log)
+
+
+def test_audit_says_what_the_ledger_knows_and_nothing_more(actions_service):
+    a = actions_service
+    missing = a.http.get("/audit/tsk_d:pay").json()
+    assert missing == {"key": "tsk_d:pay", "evidence": "VERIFIED_NOT_EXECUTED", "receipt": None}
+    paid = a.perform("tsk_d:pay", "tsk_d", 1, "pay", PAY).json()
+    found = a.http.get("/audit/tsk_d:pay").json()
+    assert found["evidence"] == "VERIFIED_DONE"
+    assert found["receipt"]["receipt_id"] == paid["receipt_id"]
+    assert a.count(task_id="tsk_d") == 1  # looking is not doing

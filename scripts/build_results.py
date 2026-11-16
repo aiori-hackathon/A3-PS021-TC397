@@ -138,6 +138,67 @@ def payments(n: int, money: Any, unnamed: int) -> str:
     return f"{n} ({' + '.join(parts)})" if parts else str(n)
 
 
+SCENARIOS = [
+    (
+        "S1",
+        "A task is created and confirmed",
+        "The reply to Agent A's `dialog.create` is lost, once",
+        "Agent A sends the same request again; the inbox returns the stored reply",
+        "One dialog, one task, one payment",
+    ),
+    (
+        "S2",
+        "A task is ready and two workers are paused",
+        "Both workers are resumed and claim the task at the same moment",
+        "The loser gets `already_claimed` and moves on",
+        "One winner, one `claimed` event, one payment",
+    ),
+    (
+        "S3",
+        "Agent B is armed to crash just before paying",
+        "Agent B dies after parse and plan",
+        "Agent B restarts, resumes from its last checkpoint with a higher fence",
+        "Earlier steps not redone, one payment",
+    ),
+    (
+        "S4",
+        "Agent B is armed to crash right after paying",
+        "Agent B dies after the payment, before telling the bridge",
+        "Agent B restarts, asks the ledger, retries with the same key",
+        "The original receipt is returned, one payment",
+    ),
+    (
+        "S5",
+        "Agent A's link to the bridge is cut",
+        "The bridge is hard-killed during the cut",
+        "The bridge recovers from SQLite; Agent A catches up with `events.since`",
+        "Same task completes, no gap in event numbers, one payment",
+    ),
+]
+
+
+def scenario_lines() -> list[str]:
+    """What each official scenario does, in words. Fixed prose: the numbers are generated."""
+    out = [
+        "| ID | Starting state | Injected failure | Retry behaviour | Expected final state |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    out += [f"| {' | '.join(row)} |" for row in SCENARIOS]
+    return out
+
+
+def replay_line(c1: dict[str, Any]) -> str | None:
+    """One line on the replay check recorded by C1, or None if it was not recorded."""
+    if "replay_ok" not in c1:
+        return None
+    verdict = "matches" if c1["replay_ok"] else "does NOT match"
+    return (
+        f"Replay check: the event log ({c1['replay_events']} events) alone rebuilds all"
+        f" {c1['replay_tasks']} tasks and {verdict} the database"
+        f" (state hash `{c1['replay_hash']}`)."
+    )
+
+
 def headline(m2: dict[str, Any]) -> str | None:
     """One-line main result from M2, or None when M2 did not run."""
     if not m2:
@@ -262,6 +323,9 @@ def render(run: Run) -> str:
         " `bridge_started`.\n"
     )
 
+    w("What each scenario does (the numbers above are measured; this is the design):\n")
+    w("\n".join(scenario_lines()) + "\n")
+
     w("## 2. Baseline\n")
     w("| ID | Status | Avg task duration | Events per task |")
     w("| --- | --- | --- | --- |")
@@ -370,6 +434,8 @@ def render(run: Run) -> str:
             f" (retry limit), {c1['cancelled']} cancelled. Actions-service faults are counted as"
             " rules set, since that service logs them instead of writing events.\n"
         )
+        if replay_line(c1):
+            w(replay_line(c1) + "\n")
     else:
         w(f"| {NOT_RUN} | | | | | | |\n")
 

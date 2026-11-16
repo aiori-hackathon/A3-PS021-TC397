@@ -286,6 +286,10 @@
       </article>
       <article class="panel log-panel">
         <header class="panel-head"><h2>Event log</h2><span class="hint" id="ev-count"></span></header>
+        <div class="verify">
+          <button id="btn-verify">Replay check</button>
+          <p id="verify-result" class="hint">Rebuilds every task from this log alone and compares it with the database.</p>
+        </div>
         <div class="filters">
           <select id="f-dialog" aria-label="Dialog"><option value="">all dialogs</option></select>
           <select id="f-task" aria-label="Task"><option value="">all tasks</option></select>

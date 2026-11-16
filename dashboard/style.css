@@ -571,3 +571,11 @@ pre.code { background: var(--fill); border: 1px solid var(--border); border-radi
 .watch-empty { color: var(--slate); }
 @media (max-width: 1099px) { .watch-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .watch-feed { scroll-behavior: auto; } }
+
+.ev .c-data.why { font-family: var(--font); }
+.ev .c-data.why b { font-family: var(--mono); font-size: var(--fs-label); letter-spacing: 0.04em; margin-right: var(--s2); }
+
+.verify { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; padding: 0 0 var(--s3); }
+.verify .hint { margin: 0; flex: 1 1 260px; }
+.verify .hint.good { color: var(--green); font-weight: 600; }
+.verify .hint.bad { color: var(--red); font-weight: 600; }

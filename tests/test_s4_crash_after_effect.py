@@ -35,7 +35,10 @@ def test_s4_crash_after_side_effect(world):
     assert "duplicate_rejected" in [e["type"] for e in events_of(world, task_id)]
     metrics = world.bridge.get("/metrics")
     assert metrics["duplicate_effects_rejected"] == 1
+    log = " ".join(world.agent_b.state()["log"])
+    assert "evidence for" in log and "VERIFIED_DONE" in log  # it asked the ledger first
     world.record(
+        evidence="VERIFIED_DONE",
         task_id_preserved=done["task_id"] == task_id,
         side_effects=world.actions.count(task_id=task_id, action="pay"),
         duplicates_rejected=duplicates(world),

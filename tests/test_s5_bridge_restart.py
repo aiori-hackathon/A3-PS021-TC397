@@ -59,6 +59,8 @@ def test_s5_bridge_hard_kill_during_network_cut(world):
     chat_has(world, "summary", plan["dialog_id"], timeout=10)
     notices = [m for m in world.agent_a.chat() if m["kind"] == "notice"]
     assert any("Bridge restarted" in m["text"] for m in notices)
+    replay = world.bridge.get("/verify")
+    assert replay["ok"], replay  # after a hard kill, the log still explains every task
     all_events = world.bridge.events()
     before_restart = [e for e in all_events if e["seq"] < restart["seq"]]
     world.record(
@@ -68,4 +70,6 @@ def test_s5_bridge_hard_kill_during_network_cut(world):
         recovery_ms=ms_between(before_restart[-1]["ts"], restart["ts"]),
         seq_continued=restart["seq"] == restart["data"]["previous_last_seq"] + 1,
         recovered_tasks=restart["data"]["recovered_tasks"],
+        replay_ok=replay["ok"],
+        replay_hash=replay["state_hash"],
     )

@@ -892,6 +892,8 @@ async function loadVerdict(id, status) {
 function narrate(e) {
   const d = e.data || {};
   const w = S.watch;
+  // Protection events: the bridge says which rule fired and why (bridge/rules.py).
+  if (d.rule && d.reason) return [`${d.rule}: ${d.reason}`, e.type === "request_id_conflict" || e.type === "schema_rejected" ? "bad" : "guard"];
   if (e.type === "task_created") w.taskIdx[e.task_id] = d.index;
   const task = e.task_id ? `task ${w.taskIdx[e.task_id] || (S.byId[e.task_id] || {}).index || short(e.task_id)}` : "";
   const fence = d.fence != null ? ` (fence ${d.fence})` : "";
@@ -1112,7 +1114,9 @@ function renderEventLog() {
     return `<div class="ev ev-grid ${groupOf(e.type)}${open ? " open" : ""}" data-seq="${e.seq}" tabindex="0" role="row" aria-expanded="${open}">` +
       `<span>${e.seq}</span><span>${esc(hhmmss(e.ts))}</span><span>${esc(e.type)}</span><span>${esc(e.actor)}</span>` +
       `<span title="${esc(e.task_id || "")}">${esc(short(e.task_id))}</span>` +
-      `<span class="c-data" title="${esc(JSON.stringify(e.data))}">${esc(JSON.stringify(e.data))}</span>${full}</div>`;
+      (e.data && e.data.reason && e.data.rule
+        ? `<span class="c-data why" title="${esc(e.data.reason)}"><b>${esc(e.data.rule)}</b> ${esc(e.data.reason)}</span>`
+        : `<span class="c-data" title="${esc(JSON.stringify(e.data))}">${esc(JSON.stringify(e.data))}</span>`) + `${full}</div>`;
   }).join("");
   const html = head + (rows || '<div class="empty"><b>No events match</b><span>Clear a filter, or send a task to create some.</span></div>');
   const el = $("eventlog");
@@ -1410,6 +1414,17 @@ function bind() {
   });
   $("btn-run-official").addEventListener("click", () => runTests("official"));
   $("watch-close").addEventListener("click", closeWatch);
+  $("btn-verify").addEventListener("click", async () => {
+    const out = $("verify-result");
+    out.textContent = "Checking…";
+    const r = await api(port("bridge"), "/verify");
+    if (!r.ok) { out.textContent = "The bridge did not answer."; out.className = "hint bad"; return; }
+    const v = r.data;
+    out.className = `hint ${v.ok ? "good" : "bad"}`;
+    out.textContent = v.ok
+      ? `✓ The log (${v.events} events) alone rebuilds all ${v.tasks_rebuilt} tasks and matches the database. State hash ${v.state_hash}: run it again and it never changes.`
+      : `✗ ${v.seq_contiguous ? "" : "Event numbers have a gap. "}${v.mismatches.length} difference(s), e.g. ${v.mismatches[0] ? `${v.mismatches[0].task_id}: ${v.mismatches[0].field} is ${v.mismatches[0].database} in the database but ${v.mismatches[0].from_log} from the log` : "see /verify"}`;
+  });
   $("btn-run-all").addEventListener("click", () => runTests("all"));
   $("btn-run-chaos").addEventListener("click", () => runTests("c1"));
   $("tests-table").addEventListener("click", (ev) => {

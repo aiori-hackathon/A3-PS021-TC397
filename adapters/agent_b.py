@@ -19,6 +19,7 @@ from fastapi import Body
 from fastapi.responses import JSONResponse
 
 from adapters.base import RETRY_STATUSES, Agent, parse_args
+from adapters.evidence import classify
 from bridge.codecs import a2a_style
 from bridge.models import ERROR_HTTP_STATUS
 
@@ -135,6 +136,8 @@ class AgentB(Agent):
         key = f"{task['task_id']}:{task['action']}"  # same key on every attempt
         if task["effect"]["status"] == "committed":
             return task, {"receipt_id": task["effect"]["receipt_id"], "replayed": False}
+        if task["effect"]["status"] == "intent":
+            await self.check_evidence(key)  # resumed after a crash: what does the ledger say?
         task = await self.write(
             task,
             "task.effect_intent",
@@ -150,6 +153,18 @@ class AgentB(Agent):
             {"receipt_id": receipt["receipt_id"], "replayed": receipt["replayed"]},
         )
         return task, {"receipt_id": receipt["receipt_id"], "replayed": receipt["replayed"]}
+
+    async def check_evidence(self, key: str) -> str:
+        """Ask the ledger what it knows before retrying; the retry itself stays the same."""
+        status, body = None, None
+        try:
+            r = await self.http.get(f"{self.actions_url}/audit/{key}", timeout=2.0)
+            status, body = r.status_code, r.json() if r.status_code == 200 else None
+        except (httpx.HTTPError, ValueError):
+            pass
+        evidence = classify(status, body)
+        self.log(f"evidence for {key} before retrying: {evidence}; retrying with the same key")
+        return evidence
 
     async def perform(self, key: str, task: dict[str, Any]) -> dict[str, Any]:
         """POST /actions; on any unknown outcome retry with the same key. Never a new key."""

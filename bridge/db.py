@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from bridge.rules import explain
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS dialogs (
   dialog_id   TEXT PRIMARY KEY,
@@ -88,6 +90,14 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS events_task ON events(task_id);
 
+-- The event log is append-only, enforced here and not only by convention: no code, and
+-- no hand-run SQL, can edit or remove history. (Rolling back a failed request is not a
+-- DELETE, so it is unaffected.)
+CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON events
+BEGIN SELECT RAISE(ABORT, 'the event log is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON events
+BEGIN SELECT RAISE(ABORT, 'the event log is append-only'); END;
+
 CREATE TABLE IF NOT EXISTS agents (
   agent_id       TEXT PRIMARY KEY,
   protocol       TEXT NOT NULL,
@@ -133,7 +143,7 @@ class Tx:
         task_id: str | None = None,
         data: dict[str, Any] | None = None,
     ) -> int:
-        data = data or {}
+        data = {**(data or {}), **(explain(type, data or {}) or {})}  # a copy: callers reuse theirs
         cur = self.execute(
             "INSERT INTO events (ts, dialog_id, task_id, type, actor, data) VALUES (?,?,?,?,?,?)",
             (self.ts, dialog_id, task_id, type, actor, dumps(data)),

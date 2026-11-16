@@ -651,3 +651,24 @@ def test_claim_and_resume_replies_carry_the_progress_report(bridge, uid):
     assert progress["summary"] == "step 3/4 (work) next; done: parse, plan"
     reclaimed = bridge.events(task_id=tid, type="reclaimed")[-1]
     assert reclaimed["data"]["progress"] == progress["summary"]
+
+
+def test_protection_events_carry_a_rule_and_a_reason(bridge, uid):
+    tid = flows.dispatched_task(bridge, uid)
+    task = flows.claim(bridge, tid)[1].result
+    flows.run_steps(bridge, task, 1, 0, 1)
+    assert flows.checkpoint(bridge, task, 1, 0)[0] == 200  # the identical request again
+    repeat = bridge.events(task_id=tid, type="duplicate_request")[-1]
+    assert repeat["data"]["rule"] == "INBOX_REPEAT"
+    assert "already processed" in repeat["data"]["reason"]
+
+    flows.worker_write(bridge, "task.complete", task, 1, {"result": {}})
+    status, reply = flows.worker_write(bridge, "task.complete", task, 1, {"result": {"x": 1}})
+    assert status == 422 and reply.error.code == "request_id_conflict"
+    conflict = bridge.events(task_id=tid, type="request_id_conflict")[-1]
+    assert conflict["data"]["rule"] == "REQUEST_ID_REUSED"
+
+    status, reply = flows.checkpoint(bridge, task, 1, 1)  # a new step, after completion
+    assert status == 409 and reply.error.code == "invalid_transition"
+    bad = bridge.events(task_id=tid, type="invalid_transition_rejected")[-1]
+    assert bad["data"]["rule"] == "TRANSITION_NOT_ALLOWED" and bad["data"]["reason"]

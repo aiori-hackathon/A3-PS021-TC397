@@ -45,6 +45,8 @@ def test_c1_chaos_run(world, settings):
     ]
     stuck = [t["task_id"] for t in tasks if t["state"] not in TERMINAL]
     metrics = world.bridge.get("/metrics")
+    replay = world.bridge.get("/verify")
+    assert world.bridge.get("/verify")["state_hash"] == replay["state_hash"]  # same every time
     status = world.supervisor.status()
     states = Counter(t["state"] for t in tasks)
     world.record(
@@ -66,7 +68,12 @@ def test_c1_chaos_run(world, settings):
         duplicate_side_effects=len(duplicate_effects),
         stuck_tasks=len(stuck),
         ledger_rows=len(ledger),
+        replay_ok=replay["ok"],
+        replay_events=replay["events"],
+        replay_tasks=replay["tasks_rebuilt"],
+        replay_hash=replay["state_hash"],
     )
+    assert replay["ok"], replay["mismatches"]  # the log alone explains the whole database
     assert len({d["msg_id"] for d in dialogs}) == N_MESSAGES
     assert not stuck
     assert duplicate_effects == {}, f"keys performed more than once: {duplicate_effects}"
